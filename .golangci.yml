@@ -1,0 +1,46 @@
+# golangci-lint v2 configuration.
+# Schema: https://golangci-lint.run/usage/configuration/
+# Run locally with `golangci-lint run`. CI uses golangci/golangci-lint-action@v9.
+version: "2"
+
+linters:
+  # Start from the standard set and add the ones that matter for a CLI that
+  # mints credentials (gosec especially).
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+    - revive
+    - misspell
+    - gosec
+  settings:
+    revive:
+      rules:
+        - name: exported
+          # Don't fail the build on missing doc comments — advisory only.
+          disabled: true
+    gosec:
+      excludes:
+        # G104 overlaps with errcheck; avoid double-reporting unchecked errors.
+        - G104
+  exclusions:
+    generated: lax
+    rules:
+      # Test files: relax gosec (test fixtures, subprocess calls) and errcheck.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+
+formatters:
+  # Formatters moved out of `linters` in v2. gofumpt is a strict superset of
+  # gofmt; goimports also manages import grouping.
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/wagneripjr/kubectl-tessera

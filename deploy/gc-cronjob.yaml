@@ -1,0 +1,122 @@
+# -----------------------------------------------------------------------------
+# OPTIONAL garbage-collection CronJob for kubectl-tessera.
+#
+# kubectl-tessera mints short-lived, least-privilege identities (a temporary
+# ServiceAccount + (Cluster)Role + (Cluster)RoleBinding, all labelled
+# app.kubernetes.io/managed-by=kubectl-tessera). The CLI cleans these up when a
+# lease expires, but a user running `tessera --print-kubeconfig` may exit before
+# the sweep runs (crash, Ctrl-C, CI cancellation). This CronJob is a safety net
+# that reaps expired, managed-by-labelled identities on a schedule.
+#
+# RECOMMENDED for teams that use --print-kubeconfig regularly. Skip it if you
+# always let the CLI complete its own cleanup.
+#
+# Namespace: tessera-system (dedicated) keeps the GC identity isolated from
+# kube-system and makes its blast radius easy to audit. Change it if your
+# cluster policy requires GC controllers to live elsewhere.
+#
+# The container image is published separately (release pipeline / a follow-up
+# image build) — ghcr.io/wagneripjr/kubectl-tessera:latest is a placeholder;
+# pin it to a released digest before applying in production.
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tessera-system
+  labels:
+    app.kubernetes.io/managed-by: kubectl-tessera
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tessera-gc
+  namespace: tessera-system
+  labels:
+    app.kubernetes.io/managed-by: kubectl-tessera
+---
+# The GC identity's ONLY permissions: list + delete on the four RBAC object
+# kinds tessera creates, plus the serviceaccounts it provisions. It can read
+# enough to find managed-by-labelled objects and delete them — nothing else.
+# No get on secrets, no pod exec, no write to workloads.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tessera-gc
+  labels:
+    app.kubernetes.io/managed-by: kubectl-tessera
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["list", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tessera-gc
+  labels:
+    app.kubernetes.io/managed-by: kubectl-tessera
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tessera-gc
+subjects:
+  - kind: ServiceAccount
+    name: tessera-gc
+    namespace: tessera-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tessera-gc
+  namespace: tessera-system
+  labels:
+    app.kubernetes.io/managed-by: kubectl-tessera
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # Reap the job pods so they don't accumulate.
+      ttlSecondsAfterFinished: 300
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/managed-by: kubectl-tessera
+        spec:
+          serviceAccountName: tessera-gc
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: gc
+              # Placeholder — pin to a released digest in production.
+              image: ghcr.io/wagneripjr/kubectl-tessera:latest
+              imagePullPolicy: IfNotPresent
+              # `tessera gc` sweeps identities labelled
+              # app.kubernetes.io/managed-by=kubectl-tessera whose lease expired.
+              args: ["gc"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi

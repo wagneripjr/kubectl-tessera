@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: Build
+        run: go build ./...
+      # Plain unit tests — no cluster required, fast, race-enabled.
+      - name: Test
+        run: go test ./... -race -count=1
+
+  e2e:
+    name: E2E (kind ${{ matrix.k8s }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two supported Kubernetes minors. Pinned to real kindest/node tags;
+        # bump these as new patch releases land (dependabot won't touch them).
+        k8s:
+          - kindest/node:v1.34.8
+          - kindest/node:v1.36.1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.14.0
+        with:
+          node_image: ${{ matrix.k8s }}
+      # The godog BeforeSuite seeds the limited "operator" identity (a
+      # ServiceAccount + ClusterRole granting only the scope/RBAC verbs tessera
+      # needs) into the kind cluster, so the acceptance tests run as the
+      # least-privilege identity the tool is designed to use — not cluster-admin.
+      - name: Acceptance tests (godog)
+        env:
+          GODOG_TAGS: "@e2e && ~@manual"
+        run: go test -tags=e2e ./test/e2e/... -v

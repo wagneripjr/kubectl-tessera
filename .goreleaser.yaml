@@ -1,0 +1,110 @@
+# GoReleaser v2 configuration for kubectl-tessera.
+# Docs: https://goreleaser.com  ·  Schema validated with `goreleaser check`.
+#
+# Release flow (see .github/workflows/release.yaml):
+#   1. goreleaser builds cross-platform binaries, archives, checksums, SBOMs,
+#      and keyless cosign signatures, then publishes the GitHub Release.
+#   2. The krew plugin manifest (tessera.yaml) is generated here but NOT pushed
+#      to kubernetes-sigs/krew-index by goreleaser (that would need goreleaser
+#      Pro). Instead, the rajatjindal/krew-release-bot step in release.yaml
+#      opens the official PR to krew-index. `skip_upload: auto` keeps goreleaser
+#      from trying to commit the manifest and also skips on prerelease tags.
+version: 2
+
+project_name: kubectl-tessera
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: kubectl-tessera
+    main: ./cmd/kubectl-tessera
+    binary: kubectl-tessera
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Version metadata is injected into package main (see cmd/kubectl-tessera).
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
+archives:
+  - id: kubectl-tessera
+    ids:
+      - kubectl-tessera
+    # tar.gz everywhere, zip on Windows (the platform people expect zip on).
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+    cmd: syft
+    args: ["$artifact", "--output", "spdx-json=$document"]
+    documents:
+      - "${artifact}.spdx.json"
+
+# Keyless (Fulcio/Rekor) cosign signature over the checksums file.
+# Requires cosign on PATH and an OIDC token (id-token: write in the workflow).
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+krews:
+  # Krew plugin name MUST NOT carry the kubectl- prefix: `kubectl krew install tessera`.
+  - name: tessera
+    ids:
+      - kubectl-tessera
+    homepage: "https://github.com/wagneripjr/kubectl-tessera"
+    description: |-
+      Mint short-lived, least-privilege kubeconfigs scoped to a single
+      ServiceAccount. kubectl-tessera creates a temporary identity, grants
+      exactly the RBAC you ask for, prints a ready-to-use kubeconfig, and
+      garbage-collects the identity when its lease expires — so you can hand
+      out narrowly scoped cluster access without sharing admin credentials.
+    short_description: "Mint short-lived, least-privilege scoped kubeconfigs"
+    # See header comment: krew-release-bot opens the krew-index PR in CI, so we
+    # never have goreleaser commit the manifest. `auto` also skips prereleases.
+    skip_upload: auto
+    # ---------------------------------------------------------------------------
+    # ALTERNATIVE: self-host a krew index instead of using the official one.
+    # Uncomment and point at your own index repo; drop the krew-release-bot step
+    # from release.yaml and set skip_upload: false. Needs a PAT with write access
+    # to the index repo exposed as GITHUB_TOKEN/the configured token env.
+    # ---------------------------------------------------------------------------
+    # repository:
+    #   owner: wagneripjr
+    #   name: krew-index
+    #   branch: master
+    #   token: "{{ .Env.KREW_INDEX_TOKEN }}"
+
+release:
+  github:
+    owner: wagneripjr
+    name: kubectl-tessera
