@@ -8,7 +8,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -93,13 +92,4 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 
 	cmd.AddCommand(newVersionCmd(info), newGcCmd(cf), newLsCmd(cf))
 	return cmd
-}
-
-func (o *mintOptions) run(cmd *cobra.Command) error {
-	// Walking skeleton: echo the resolved plan to stderr (build-order step 1) and
-	// return not-implemented so the invocation exits non-zero.
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-		"tessera: resolved plan: verbs=%v resources=%v resource-names=%v api-group=%q ttl=%s cluster-scoped=%t dry-run=%t print-kubeconfig=%t exec=%t output=%q\n",
-		o.verbs, o.resources, o.resourceNames, o.apiGroup, o.ttl, o.clusterScoped, o.dryRun, o.printKubeconfig, o.exec, o.output)
-	return fmt.Errorf("mint: %w", errNotImplemented)
 }
