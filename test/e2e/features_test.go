@@ -132,6 +132,8 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the session lifetime elapses$`, func(c context.Context) error { return current.WhenSessionLifetimeElapses(c) })
 	ctx.Step(`^an operator mints an interactive read-only session$`,
 		func(c context.Context) error { return current.GivenInteractiveSession(c, "pods") })
+	ctx.Step(`^an operator mints a short-lived interactive read-only session$`,
+		func(c context.Context) error { return current.GivenShortLivedInteractiveSession(c, "pods") })
 	ctx.Step(`^the operator leaves the interactive session$`, func(c context.Context) error { return current.WhenOperatorLeavesSession(c) })
 	ctx.Step(`^the session's managed objects are gone$`, func(c context.Context) error { return current.ThenSessionObjectsGone(c) })
 	ctx.Step(`^the session kubeconfig file is removed$`, func() error { return current.ThenKubeconfigFileRemoved() })

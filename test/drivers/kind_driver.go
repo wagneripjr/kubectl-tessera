@@ -5,11 +5,13 @@ package drivers
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -63,8 +65,9 @@ type KindDriver struct {
 	adminDynamic dynamic.Interface
 	mapper       meta.RESTMapper
 
-	identities map[string]string // limited-identity name -> kubeconfig path
-	lastExec   *exec.Cmd
+	identities    map[string]string // limited-identity name -> kubeconfig path
+	lastExec      *exec.Cmd
+	lastExecStdin *os.File // write end of a background --exec session's held-open stdin
 }
 
 // NewKindDriver builds the binary once and connects to the kind API server. A
@@ -140,6 +143,12 @@ func repoRoot() (string, error) {
 // --- process adapter ---
 
 func (d *KindDriver) Mint(ctx context.Context, req MintRequest) (MintResult, error) {
+	return d.runBinary(ctx, req.Mode == ModeExec, d.mintArgs(req)...)
+}
+
+// mintArgs renders a MintRequest into the binary's CLI flags. Shared by Mint (which
+// blocks on the run) and MintExecBackground (which leaves the process running).
+func (d *KindDriver) mintArgs(req MintRequest) []string {
 	args := []string{"--resource", strings.Join(req.Resources, ",")}
 	if len(req.Verbs) > 0 {
 		args = append(args, "--verb", strings.Join(req.Verbs, ","))
@@ -172,7 +181,82 @@ func (d *KindDriver) Mint(ctx context.Context, req MintRequest) (MintResult, err
 	if req.AsIdentity != "" {
 		args = append(args, "--kubeconfig", d.identities[req.AsIdentity])
 	}
-	return d.runBinary(ctx, req.Mode == ModeExec, args...)
+	return args
+}
+
+// MintExecBackground starts an --exec session in the BACKGROUND on a real blocking
+// shell and leaves it RUNNING, so a crash-recovery scenario can SIGKILL it (bypassing
+// the exit trap) and let gc reclaim the orphans. Unlike runBinary(isExec=true) — which
+// uses SHELL=/usr/bin/true + cmd.Run(), so the shell exits immediately and the trap
+// fires during the call — this points SHELL at /bin/sh and feeds it a stdin pipe whose
+// write end the driver HOLDS OPEN. A non-interactive /bin/sh reads its command stream
+// from stdin, so with no EOF it blocks and the process stays alive until signalled.
+// It records d.lastExec (live) so KillExecProcess can reach it, and parses the session
+// id + kubeconfig path from the SUT's streamed stderr (both printed before the shell
+// blocks). A timeout here is a broken harness, not a valid RED.
+func (d *KindDriver) MintExecBackground(ctx context.Context, req MintRequest) (MintResult, error) {
+	cmd := exec.CommandContext(ctx, d.binaryPath, d.mintArgs(req)...)
+	cmd.Env = append(os.Environ(), "SHELL=/bin/sh")
+
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		return MintResult{}, fmt.Errorf("creating stdin pipe: %w", err)
+	}
+	cmd.Stdin = stdinR
+	cmd.Stdout = io.Discard
+	stderr := &syncBuffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		_ = stdinR.Close()
+		_ = stdinW.Close()
+		return MintResult{}, fmt.Errorf("starting binary: %w", err)
+	}
+	// The child holds its own dup of the read end; close the parent's copy so the only
+	// thing keeping the pipe open is stdinW (which the driver holds until kill).
+	_ = stdinR.Close()
+	d.lastExec = cmd
+	d.lastExecStdin = stdinW
+
+	// The SUT prints the audit line (session-id=...) and kubeconfig=... to stderr before
+	// it spawns the shell and blocks. Poll the captured stderr until both are present.
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		out := stderr.String()
+		if sessionIDRe.MatchString(out) && kubeconfigRe.MatchString(out) {
+			res := MintResult{Stderr: out}
+			if m := sessionIDRe.FindStringSubmatch(out); m != nil {
+				res.SessionID = m[1]
+			}
+			if m := kubeconfigRe.FindStringSubmatch(out); m != nil {
+				res.KubeconfigPath = m[1]
+			}
+			return res, nil
+		}
+		if time.Now().After(deadline) {
+			return MintResult{}, fmt.Errorf("timed out waiting for session-id+kubeconfig on stderr; got:\n%s", out)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// syncBuffer is an io.Writer safe for the os/exec stderr-copy goroutine to write while
+// the driver polls it. Used by MintExecBackground to read a live process's diagnostics.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
 }
 
 func (d *KindDriver) Gc(ctx context.Context) (MintResult, error) {
@@ -237,7 +321,16 @@ func (d *KindDriver) KillExecProcess(_ context.Context, signal string) error {
 	if signal != "SIGKILL" && signal != "-9" {
 		sig = syscall.SIGTERM
 	}
-	return d.lastExec.Process.Signal(sig)
+	err := d.lastExec.Process.Signal(sig)
+	// Release the held-open stdin so the (reparented) background shell gets EOF and
+	// exits, and reap the killed binary so a full-suite run accrues no zombies. The
+	// scenario asserts only cluster state, so this teardown is best-effort.
+	if d.lastExecStdin != nil {
+		_ = d.lastExecStdin.Close()
+		d.lastExecStdin = nil
+	}
+	go func(cmd *exec.Cmd) { _ = cmd.Wait() }(d.lastExec)
+	return err
 }
 
 // --- cluster adapter ---

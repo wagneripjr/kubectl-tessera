@@ -20,9 +20,12 @@ Feature: Session lifecycle and cleanup
     And the session kubeconfig file is removed
 
   # Acceptance criterion #5 — crash recovery
+  # The session is short-lived so its lifetime genuinely elapses within the test window,
+  # and it is left running in the background so the abrupt termination (SIGKILL) bypasses
+  # the exit trap and orphans the set — leaving real work for the sweep to reclaim.
   @FR-011
   Scenario: an abruptly terminated session is reclaimed by the sweep
-    Given an operator mints an interactive read-only session
+    Given an operator mints a short-lived interactive read-only session
     When the session process is terminated abruptly
     And the session lifetime elapses
     And the garbage-collection sweep runs

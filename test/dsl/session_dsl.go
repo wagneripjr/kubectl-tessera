@@ -104,6 +104,28 @@ func (s *SessionDSL) GivenInteractiveSession(ctx context.Context, resource strin
 	return s.mint(ctx)
 }
 
+// GivenShortLivedInteractiveSession mints an interactive (--exec) read-only session
+// with a lifetime short enough to elapse within the scenario's wait, and leaves the
+// process RUNNING in the background (on a real blocking shell) so a later SIGKILL
+// bypasses the exit trap and orphans the set. The token is floored to the cluster
+// minimum, but the expires-at annotation reflects the requested 1s — and the sweep
+// reads the annotation, so the orphaned objects become reclaimable after the wait.
+// (FR-011 crash recovery.)
+func (s *SessionDSL) GivenShortLivedInteractiveSession(ctx context.Context, resource string) error {
+	s.req = drivers.MintRequest{
+		Verbs:     []string{"get", "list", "watch"},
+		Resources: []string{resource},
+		TTL:       1 * time.Second,
+		Mode:      drivers.ModeExec,
+	}
+	res, err := s.driver.MintExecBackground(ctx, s.req)
+	if err != nil {
+		return fmt.Errorf("starting background exec session: %w", err)
+	}
+	s.last = res
+	return nil
+}
+
 // GivenExpiredManagedSession seeds a managed session whose expiry is in the past.
 func (s *SessionDSL) GivenExpiredManagedSession(ctx context.Context, sessionID string) error {
 	return s.driver.SeedManagedSession(ctx, sessionID, time.Now().Add(-time.Hour))
@@ -162,6 +184,11 @@ func (s *SessionDSL) WhenGarbageCollectionRuns(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// gc is a separate invocation that carries no session identity. Preserve the minted
+	// session's id/kubeconfig recorded by the Given so the crash-recovery assertion
+	// (ThenSessionObjectsGone) can still prove a session actually existed before the sweep.
+	res.SessionID = s.last.SessionID
+	res.KubeconfigPath = s.last.KubeconfigPath
 	s.last = res
 	return nil
 }
