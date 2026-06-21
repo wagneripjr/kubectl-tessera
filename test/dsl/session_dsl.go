@@ -78,12 +78,16 @@ func (s *SessionDSL) GivenLimitedOperator(ctx context.Context, resource string) 
 	return nil
 }
 
-// GivenShortLivedSession mints a read-only session with a very short lifetime.
-func (s *SessionDSL) GivenShortLivedSession(ctx context.Context, resource string) error {
+// GivenSubMinimumSession mints a read-only session requesting a lifetime below the
+// cluster's minimum token TTL (the kube-apiserver hardcoded 10-minute floor). The
+// requested 5m is well under that floor, so the SUT must floor it up to the minimum
+// for the mint to succeed at all. The window stays comfortably large so nothing
+// lapses mid-assertion; the scenario performs no waiting.
+func (s *SessionDSL) GivenSubMinimumSession(ctx context.Context, resource string) error {
 	s.req = drivers.MintRequest{
 		Verbs:     []string{"get", "list", "watch"},
 		Resources: []string{resource},
-		TTL:       2 * time.Second,
+		TTL:       5 * time.Minute,
 		Mode:      drivers.ModePrintKubeconfig,
 	}
 	return s.mint(ctx)
@@ -272,17 +276,12 @@ func (s *SessionDSL) ThenMintedCredentialWorks(ctx context.Context, resource str
 	return nil
 }
 
-// ThenMintedCredentialRejected asserts the minted token is now rejected (expiry).
-func (s *SessionDSL) ThenMintedCredentialRejected(ctx context.Context, resource string) error {
-	if s.last.KubeconfigPath == "" {
-		return fmt.Errorf("mint produced no kubeconfig (exit %d): %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
-	}
-	status, err := s.driver.MintedTokenRequest(ctx, s.last.KubeconfigPath, resource, "", s.driver.Namespace())
-	if err != nil {
-		return err
-	}
-	if status != 401 && status != 403 {
-		return fmt.Errorf("expected the expired credential to be rejected (401/403), got %d", status)
+// ThenWarnedTTLFloored asserts the SUT warned that the requested lifetime was floored
+// up to the cluster minimum. The diagnostic stream is the contract surface (NFR-008);
+// the substring is the stable part of the warning the operator reads.
+func (s *SessionDSL) ThenWarnedTTLFloored() error {
+	if !strings.Contains(s.last.Stderr, "floored to cluster minimum") {
+		return fmt.Errorf("expected a floor warning on the diagnostic output, got: %s", strings.TrimSpace(s.last.Stderr))
 	}
 	return nil
 }

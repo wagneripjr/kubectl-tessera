@@ -118,6 +118,10 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		_ = rbac.Rollback(ctx, cs, created)
 		return fmt.Errorf("minting token: %w", err)
 	}
+	if minted.Floored {
+		fmt.Fprintf(stderr, "tessera: warning: requested ttl %s floored to cluster minimum %s\n",
+			o.ttl, token.MinTTL)
+	}
 	if minted.Clamped {
 		fmt.Fprintf(stderr, "tessera: warning: requested ttl %s clamped by cluster to %s\n",
 			o.ttl, minted.ExpirationTimestamp.UTC().Format(time.RFC3339))

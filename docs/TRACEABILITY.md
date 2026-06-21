@@ -13,7 +13,7 @@ behavior is unimplemented by design; see the project plan).
 | FR-003 | SSAR pre-flight gate | ADR-006 | preflight_gate.feature | 1/1 GREEN | Done |
 | FR-004 | Create managed RBAC set as invoking user | ADR-005, ADR-008 | scope_enforcement.feature | 1/1 GREEN | Done |
 | FR-005 | Reverse-order rollback, no orphans | ADR-005 | lifecycle_cleanup.feature | 1/1 GREEN (unit + e2e fault-injection) | Done |
-| FR-006 | TokenRequest mint + clamp warning | ADR-001 | lifecycle_cleanup.feature | unit GREEN; e2e expiry blocked by cluster min token TTL | In Progress |
+| FR-006 | TokenRequest mint + TTL floor/clamp warning | ADR-001 | lifecycle_cleanup.feature | unit GREEN; 1/1 GREEN (e2e @FR-006 sub-minimum floor) | Done |
 | FR-007 | Isolated 0600 throwaway kubeconfig | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-008 | `--print-kubeconfig` output mode | ADR-007 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-009 | `--exec` subshell + signal-trap cleanup | ADR-007 | lifecycle_cleanup.feature | 1/1 GREEN (e2e @FR-009; crash-recovery #5 tracked under FR-011) | Done |

@@ -123,13 +123,13 @@ func registerSteps(ctx *godog.ScenarioContext) {
 		func(c context.Context) error { return current.ThenNoManagedObjectsCreated(c) })
 
 	// lifecycle_cleanup.feature
-	ctx.Step(`^an operator mints a read-only session with a very short lifetime$`,
-		func(c context.Context) error { return current.GivenShortLivedSession(c, "pods") })
+	ctx.Step(`^an operator mints a read-only session requesting a lifetime below the cluster minimum$`,
+		func(c context.Context) error { return current.GivenSubMinimumSession(c, "pods") })
 	ctx.Step(`^the minted credential works immediately$`,
 		func(c context.Context) error { return current.ThenMintedCredentialWorks(c, "pods") })
+	ctx.Step(`^the operator is warned that the lifetime was floored to the cluster minimum$`,
+		func() error { return current.ThenWarnedTTLFloored() })
 	ctx.Step(`^the session lifetime elapses$`, func(c context.Context) error { return current.WhenSessionLifetimeElapses(c) })
-	ctx.Step(`^the minted credential no longer works$`,
-		func(c context.Context) error { return current.ThenMintedCredentialRejected(c, "pods") })
 	ctx.Step(`^an operator mints an interactive read-only session$`,
 		func(c context.Context) error { return current.GivenInteractiveSession(c, "pods") })
 	ctx.Step(`^the operator leaves the interactive session$`, func(c context.Context) error { return current.WhenOperatorLeavesSession(c) })

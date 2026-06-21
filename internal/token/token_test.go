@@ -81,6 +81,53 @@ func TestMintDetectsClamping(t *testing.T) {
 	}
 }
 
+// echoExpiryReactor models a cluster that honors the requested lifetime: it returns a
+// token expiring fixedNow + the requested ExpirationSeconds. Tests then assert on Mint's
+// public result (ExpirationTimestamp, Floored) rather than the request it sent.
+func echoExpiryReactor(token string) clienttesting.ReactionFunc {
+	return func(action clienttesting.Action) (bool, runtime.Object, error) {
+		create := action.(clienttesting.CreateAction)
+		if create.GetSubresource() != "token" {
+			return false, nil, nil
+		}
+		tr := create.GetObject().(*authenticationv1.TokenRequest).DeepCopy()
+		tr.Status.Token = token
+		tr.Status.ExpirationTimestamp = metav1.NewTime(fixedNow.Add(time.Duration(*tr.Spec.ExpirationSeconds) * time.Second))
+		return true, tr, nil
+	}
+}
+
+func TestMintFloorsSubMinimumTTL(t *testing.T) {
+	cases := []struct {
+		name          string
+		ttl           time.Duration
+		wantEffective time.Duration
+		wantFloored   bool
+	}{
+		{name: "below the minimum is floored up to it", ttl: 30 * time.Second, wantEffective: MinTTL, wantFloored: true},
+		{name: "exactly the minimum is left alone", ttl: MinTTL, wantEffective: MinTTL, wantFloored: false},
+		{name: "above the minimum is honored", ttl: 15 * time.Minute, wantEffective: 15 * time.Minute, wantFloored: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "serviceaccounts", echoExpiryReactor("minted-xyz"))
+			swapNow(t, fixedNow)
+
+			m, err := Mint(context.Background(), cs, "prod", "sa", tc.ttl)
+			if err != nil {
+				t.Fatalf("Mint returned error: %v", err)
+			}
+			if want := fixedNow.Add(tc.wantEffective); !m.ExpirationTimestamp.Equal(want) {
+				t.Fatalf("effective expiry = %v, want %v (effective ttl %s)", m.ExpirationTimestamp, want, tc.wantEffective)
+			}
+			if m.Floored != tc.wantFloored {
+				t.Fatalf("Floored = %t, want %t", m.Floored, tc.wantFloored)
+			}
+		})
+	}
+}
+
 func TestMintPropagatesError(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	cs.PrependReactor("create", "serviceaccounts", func(action clienttesting.Action) (bool, runtime.Object, error) {

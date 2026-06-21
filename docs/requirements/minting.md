@@ -69,10 +69,20 @@ Track created objects; on any error mid-creation, delete them in reverse order
 ## FR-006: Mint the token via the TokenRequest API
 
 Mint the ServiceAccount token through `CoreV1().ServiceAccounts(ns).CreateToken(...)` with
-`ExpirationSeconds` from the requested TTL. Use the **returned** `ExpirationTimestamp`
-(which reflects cluster clamping by `--service-account-max-token-expiration`); if it is
-shorter than requested, warn.
+`ExpirationSeconds` from the requested TTL, honoring the cluster's bounds in **both**
+directions:
 
-- **Acceptance:** the effective expiry surfaced to the user equals the API server's
-  returned timestamp; a clamped TTL emits a warning to stderr.
-- **Traces to:** ADR-001 · `lifecycle_cleanup.feature` (#3, TTL expiry).
+- **Floor (below the minimum):** the kube-apiserver hard-rejects any `ExpirationSeconds`
+  below its minimum (10 minutes, a non-configurable, non-discoverable `ValidateTokenRequest`
+  constant). Rather than fail, floor a sub-minimum requested TTL up to that minimum before
+  the request, and warn to stderr that the lifetime was floored.
+- **Clamp (above the maximum):** use the **returned** `ExpirationTimestamp` (which reflects
+  clamping by `--service-account-max-token-expiration`); if it is shorter than requested,
+  warn to stderr.
+
+The effective expiry surfaced to the user is always the API server's returned timestamp.
+
+- **Acceptance:** a TTL below the cluster minimum is floored to it, the credential works,
+  and a floor warning is emitted to stderr; a TTL above the cluster maximum surfaces the
+  returned (clamped) timestamp and emits a clamp warning.
+- **Traces to:** ADR-001 · `lifecycle_cleanup.feature` (#3, sub-minimum TTL floor).

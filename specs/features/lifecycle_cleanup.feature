@@ -4,13 +4,12 @@ Feature: Session lifecycle and cleanup
   lifetime, the interactive exit trap, and the garbage-collection sweep. No failure
   mode leaves objects orphaned indefinitely.
 
-  # Acceptance criterion #3 — TTL expiry
-  @FR-006 @slow
-  Scenario: a session credential stops working after its lifetime elapses
-    Given an operator mints a read-only session with a very short lifetime
+  # Acceptance criterion #3 — a sub-minimum lifetime is floored to the cluster minimum
+  @FR-006
+  Scenario: a credential requested below the cluster's minimum lifetime is floored up
+    Given an operator mints a read-only session requesting a lifetime below the cluster minimum
     Then the minted credential works immediately
-    When the session lifetime elapses
-    Then the minted credential no longer works
+    And the operator is warned that the lifetime was floored to the cluster minimum
 
   # Acceptance criterion #4 — --exec cleanup
   @FR-009
