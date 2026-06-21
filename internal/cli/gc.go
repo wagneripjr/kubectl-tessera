@@ -42,7 +42,7 @@ func newGcCmd(cf *genericclioptions.ConfigFlags) *cobra.Command {
 			res, sweepErr := gc.Sweep(ctx, cs, time.Now().UTC())
 			// Summary on the diagnostic stream; stdout stays clean (NFR-008). Printed
 			// before surfacing any error so a partial sweep still reports its progress.
-			fmt.Fprintf(stderr,
+			_, _ = fmt.Fprintf(stderr,
 				"tessera: gc swept %d expired, kept %d unexpired, skipped %d unparseable (scanned %d)\n",
 				res.Deleted, res.SkippedFresh, res.SkippedUnparseable, res.Scanned)
 			if sweepErr != nil {

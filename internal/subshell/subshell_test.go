@@ -14,7 +14,6 @@ func TestNormalShellExitRunsCleanup(t *testing.T) {
 		Shell:   "/usr/bin/true",
 		Cleanup: func(context.Context) { cleaned++ },
 	})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -34,7 +33,6 @@ func TestNonZeroShellExitStillRunsCleanup(t *testing.T) {
 		Shell:   "/usr/bin/false",
 		Cleanup: func(context.Context) { cleaned++ },
 	})
-
 	if err != nil {
 		t.Fatalf("non-zero shell exit must not be a Go error, got: %v", err)
 	}

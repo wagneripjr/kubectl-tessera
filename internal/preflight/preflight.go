@@ -73,18 +73,18 @@ func Check(ctx context.Context, cs kubernetes.Interface, attrs []Attribute) (Res
 // RenderTable writes a human-readable allowed/denied table to w (stderr). The
 // literal verdict markers ALLOWED/DENIED let callers and tests assert outcomes.
 func RenderTable(w io.Writer, r Result) {
-	fmt.Fprintln(w, "tessera: pre-flight authorization (SelfSubjectAccessReview):")
+	_, _ = fmt.Fprintln(w, "tessera: pre-flight authorization (SelfSubjectAccessReview):")
 	for _, d := range r.Decisions {
 		verdict := "ALLOWED"
 		if !d.Allowed {
 			verdict = "DENIED"
 		}
-		fmt.Fprintf(w, "  %-7s %s %s%s%s", verdict, d.Attribute.Verb, d.Attribute.Resource,
+		_, _ = fmt.Fprintf(w, "  %-7s %s %s%s%s", verdict, d.Attribute.Verb, d.Attribute.Resource,
 			scopeSuffix(d.Attribute), nameSuffix(d.Attribute))
 		if !d.Allowed && d.Reason != "" {
-			fmt.Fprintf(w, "  (%s)", d.Reason)
+			_, _ = fmt.Fprintf(w, "  (%s)", d.Reason)
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 }
 

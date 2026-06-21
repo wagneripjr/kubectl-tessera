@@ -95,9 +95,9 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	}
 
 	if o.dryRun {
-		fmt.Fprintf(stderr, "tessera: dry-run: would create service account, %s and binding %q in %q with %d rule(s)\n",
+		_, _ = fmt.Fprintf(stderr, "tessera: dry-run: would create service account, %s and binding %q in %q with %d rule(s)\n",
 			roleKind(o.clusterScoped), name, saNamespace, len(resolution.Rules))
-		fmt.Fprintln(stderr, audit(expires))
+		_, _ = fmt.Fprintln(stderr, audit(expires))
 		return nil
 	}
 
@@ -119,11 +119,11 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		return fmt.Errorf("minting token: %w", err)
 	}
 	if minted.Floored {
-		fmt.Fprintf(stderr, "tessera: warning: requested ttl %s floored to cluster minimum %s\n",
+		_, _ = fmt.Fprintf(stderr, "tessera: warning: requested ttl %s floored to cluster minimum %s\n",
 			o.ttl, token.MinTTL)
 	}
 	if minted.Clamped {
-		fmt.Fprintf(stderr, "tessera: warning: requested ttl %s clamped by cluster to %s\n",
+		_, _ = fmt.Fprintf(stderr, "tessera: warning: requested ttl %s clamped by cluster to %s\n",
 			o.ttl, minted.ExpirationTimestamp.UTC().Format(time.RFC3339))
 	}
 
@@ -139,7 +139,7 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		return fmt.Errorf("writing kubeconfig: %w", err)
 	}
 
-	fmt.Fprintln(stderr, audit(minted.ExpirationTimestamp.UTC()))
+	_, _ = fmt.Fprintln(stderr, audit(minted.ExpirationTimestamp.UTC()))
 
 	if interactive {
 		// FR-009: spawn ${SHELL:-/bin/bash} with KUBECONFIG pointing at the throwaway
@@ -151,7 +151,7 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		}
 		// Surface the throwaway kubeconfig path on the diagnostic stream (stdout stays
 		// the subshell's). NFR-008: stdout hygiene — only --print-kubeconfig writes there.
-		fmt.Fprintf(stderr, "tessera: kubeconfig=%s\n", path)
+		_, _ = fmt.Fprintf(stderr, "tessera: kubeconfig=%s\n", path)
 
 		exitCode, err := subshell.Run(ctx, subshell.Config{
 			Shell:  shell,
@@ -164,10 +164,10 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 				// SIGINT/SIGTERM that may have triggered it). Attempt both the RBAC
 				// delete and the file removal regardless of either's outcome.
 				if rbErr := rbac.Rollback(cleanupCtx, cs, created); rbErr != nil {
-					fmt.Fprintf(stderr, "tessera: warning: cleanup of session %s incomplete: %v\n", sessionID, rbErr)
+					_, _ = fmt.Fprintf(stderr, "tessera: warning: cleanup of session %s incomplete: %v\n", sessionID, rbErr)
 				}
 				if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
-					fmt.Fprintf(stderr, "tessera: warning: removing kubeconfig %s: %v\n", path, rmErr)
+					_, _ = fmt.Fprintf(stderr, "tessera: warning: removing kubeconfig %s: %v\n", path, rmErr)
 				}
 			},
 		})
@@ -181,7 +181,7 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	}
 
 	// --print-kubeconfig: leave the objects for gc and emit only the path on stdout.
-	fmt.Fprintln(stdout, path)
+	_, _ = fmt.Fprintln(stdout, path)
 	return nil
 }
 
