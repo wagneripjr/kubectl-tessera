@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.26"
           cache: true
 
       # cosign (keyless signing) and syft (SBOM generation) must be on PATH
