@@ -21,7 +21,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2
+          # Full semver required — the action rejects a bare major like "v2"
+          # (invalid version string 'v2', expected format v1.2 or v1.2.3).
+          version: v2.12.2
 
   unit:
     name: Unit tests
