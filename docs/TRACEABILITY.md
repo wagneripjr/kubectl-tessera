@@ -12,7 +12,7 @@ behavior is unimplemented by design; see the project plan).
 | FR-002 | Scope resolution via RESTMapper (`--cluster-scoped` rename) | ADR-001 | scope_enforcement.feature + unit | 2/2 GREEN | Done |
 | FR-003 | SSAR pre-flight gate | ADR-006 | preflight_gate.feature | 1/1 GREEN | Done |
 | FR-004 | Create managed RBAC set as invoking user | ADR-005, ADR-008 | scope_enforcement.feature | 1/1 GREEN | Done |
-| FR-005 | Reverse-order rollback, no orphans | ADR-005 | lifecycle_cleanup.feature | unit GREEN; e2e fault-injection still a placeholder | In Progress |
+| FR-005 | Reverse-order rollback, no orphans | ADR-005 | lifecycle_cleanup.feature | 1/1 GREEN (unit + e2e fault-injection) | Done |
 | FR-006 | TokenRequest mint + clamp warning | ADR-001 | lifecycle_cleanup.feature | unit GREEN; e2e expiry blocked by cluster min token TTL | In Progress |
 | FR-007 | Isolated 0600 throwaway kubeconfig | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-008 | `--print-kubeconfig` output mode | ADR-007 | distribution_cli.feature | 1/1 GREEN | Done |

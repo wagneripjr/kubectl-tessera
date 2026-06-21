@@ -16,7 +16,10 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/test/drivers"
 )
 
-const limitedIdentity = "tessera-limited"
+const (
+	limitedIdentity        = "tessera-limited"
+	partialCreatorIdentity = "tessera-partial-creator"
+)
 
 // SessionDSL carries per-scenario state across Given/When/Then steps.
 type SessionDSL struct {
@@ -159,10 +162,23 @@ func (s *SessionDSL) WhenGarbageCollectionRuns(ctx context.Context) error {
 	return nil
 }
 
-// GivenCreationWillFail is a placeholder fault-injection hook; the mechanism is
-// designed during 4b implementation (FR-005). It is a no-op until then so the
-// scenario reaches a failing assertion rather than an undefined step.
-func (s *SessionDSL) GivenCreationWillFail(_ context.Context) error { return nil }
+// GivenCreationWillFail arranges a real mid-creation failure (FR-005): it seeds an
+// operator that may read pods and create/delete ServiceAccounts and Roles but may NOT
+// create RoleBindings, and points the next mint AT it. The binary then creates the SA
+// and Role and fails at the binding (403), so reverse-order rollback must run.
+func (s *SessionDSL) GivenCreationWillFail(ctx context.Context) error {
+	if err := s.driver.SeedPartialCreatorIdentity(ctx, partialCreatorIdentity); err != nil {
+		return fmt.Errorf("seeding partial-creator identity: %w", err)
+	}
+	s.req = drivers.MintRequest{
+		Verbs:      []string{"get", "list", "watch"},
+		Resources:  []string{"pods"},
+		TTL:        15 * time.Minute,
+		Mode:       drivers.ModePrintKubeconfig,
+		AsIdentity: partialCreatorIdentity,
+	}
+	return nil
+}
 
 // --- Then (assertions) ---
 
@@ -214,6 +230,31 @@ func (s *SessionDSL) ThenNoManagedObjectsCreated(ctx context.Context) error {
 		return fmt.Errorf("expected no managed objects, found %d", n)
 	}
 	return nil
+}
+
+// ThenNoManagedObjectsRemain asserts that a mint which failed partway through left no
+// managed objects behind (FR-005). It first requires the mint to have failed — a
+// successful mint would leave a full set, so this guards against the fault not firing —
+// then polls until the count settles to zero, because the SUT deletes with foreground
+// propagation and the Delete call returns before finalizers clear.
+func (s *SessionDSL) ThenNoManagedObjectsRemain(ctx context.Context) error {
+	if s.last.ExitCode == 0 {
+		return fmt.Errorf("expected the mint to fail mid-creation, got exit 0: %s", strings.TrimSpace(s.last.Stderr))
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n, err := s.driver.CountManaged(ctx)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("expected no managed objects to remain after rollback, found %d", n)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // ThenMintedCredentialWorks asserts the minted token is currently accepted.

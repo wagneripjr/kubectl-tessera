@@ -370,6 +370,48 @@ func (d *KindDriver) SeedLimitedIdentity(ctx context.Context, name string, verbs
 	if _, err := d.admin.RbacV1().RoleBindings(d.namespace).Create(ctx, rb, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
+	return d.registerIdentityToken(ctx, name)
+}
+
+// SeedPartialCreatorIdentity seeds an operator that may read pods and create/delete
+// ServiceAccounts and Roles, but may NOT create RoleBindings. A real mint run AS this
+// identity therefore gets past the SA and Role and fails at the binding (403),
+// exercising reverse-order rollback (FR-005). The seed objects carry no managed-by
+// label, so they are invisible to CountManaged.
+func (d *KindDriver) SeedPartialCreatorIdentity(ctx context.Context, name string) error {
+	if _, err := d.admin.CoreV1().ServiceAccounts(d.namespace).Create(ctx,
+		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace}},
+		metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace},
+		Rules: []rbacv1.PolicyRule{
+			// read pods so the SSAR pre-flight passes and creation is reached
+			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch"}},
+			// create + delete SAs and Roles so creation reaches the binding and rollback can clean up
+			{APIGroups: []string{""}, Resources: []string{"serviceaccounts"}, Verbs: []string{"create", "delete"}},
+			{APIGroups: []string{"rbac.authorization.k8s.io"}, Resources: []string{"roles"}, Verbs: []string{"create", "delete"}},
+			// intentionally NO rolebindings verbs — the binding create returns 403
+		},
+	}
+	if _, err := d.admin.RbacV1().Roles(d.namespace).Create(ctx, role, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	rb := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace},
+		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "Role", Name: name},
+		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: name, Namespace: d.namespace}},
+	}
+	if _, err := d.admin.RbacV1().RoleBindings(d.namespace).Create(ctx, rb, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	return d.registerIdentityToken(ctx, name)
+}
+
+// registerIdentityToken mints a 1h token for the ServiceAccount `name` in the active
+// namespace, writes a kubeconfig for it, and registers it under d.identities[name].
+func (d *KindDriver) registerIdentityToken(ctx context.Context, name string) error {
 	tr, err := d.admin.CoreV1().ServiceAccounts(d.namespace).CreateToken(ctx, name,
 		&authenticationv1.TokenRequest{Spec: authenticationv1.TokenRequestSpec{ExpirationSeconds: ptr.To(int64(3600))}},
 		metav1.CreateOptions{})

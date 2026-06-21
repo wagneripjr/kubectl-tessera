@@ -139,7 +139,7 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the garbage-collection sweep runs$`, func(c context.Context) error { return current.WhenGarbageCollectionRuns(c) })
 	ctx.Step(`^object creation will fail partway through$`, func(c context.Context) error { return current.GivenCreationWillFail(c) })
 	ctx.Step(`^the operator mints a session$`, func(c context.Context) error { return current.WhenOperatorMints(c) })
-	ctx.Step(`^no managed objects remain for that session$`, func(c context.Context) error { return current.ThenNoManagedObjectsCreated(c) })
+	ctx.Step(`^no managed objects remain for that session$`, func(c context.Context) error { return current.ThenNoManagedObjectsRemain(c) })
 	ctx.Step(`^an expired managed session exists$`,
 		func(c context.Context) error { return current.GivenExpiredManagedSession(c, "expired1") })
 	ctx.Step(`^an unexpired managed session exists$`,
