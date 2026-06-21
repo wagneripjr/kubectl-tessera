@@ -18,8 +18,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -42,6 +42,11 @@ const (
 )
 
 var sessionIDRe = regexp.MustCompile(`session-id[=:\s]+([a-z0-9-]+)`)
+
+// kubeconfigRe extracts the throwaway kubeconfig path from the SUT's stderr
+// diagnostic in --exec mode (where the path is NOT printed to stdout, unlike
+// --print-kubeconfig). This is what gives ThenKubeconfigFileRemoved real teeth.
+var kubeconfigRe = regexp.MustCompile(`kubeconfig=(\S+)`)
 
 // KindDriver satisfies the documented protocol-driver contract.
 var _ TesseraDriver = (*KindDriver)(nil)
@@ -212,6 +217,14 @@ func (d *KindDriver) runBinary(ctx context.Context, isExec bool, args ...string)
 	}
 	if strings.Contains(strings.Join(args, " "), "--print-kubeconfig") && res.ExitCode == 0 {
 		res.KubeconfigPath = strings.TrimSpace(res.Stdout)
+	}
+	if isExec {
+		// --exec keeps stdout for the subshell; the throwaway kubeconfig path is
+		// surfaced as a stderr diagnostic instead. Capture it so the cleanup of the
+		// file is actually verifiable.
+		if m := kubeconfigRe.FindStringSubmatch(res.Stderr); m != nil {
+			res.KubeconfigPath = m[1]
+		}
 	}
 	return res, nil
 }

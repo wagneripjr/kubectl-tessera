@@ -16,7 +16,7 @@ behavior is unimplemented by design; see the project plan).
 | FR-006 | TokenRequest mint + clamp warning | ADR-001 | lifecycle_cleanup.feature | unit GREEN; e2e expiry blocked by cluster min token TTL | In Progress |
 | FR-007 | Isolated 0600 throwaway kubeconfig | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-008 | `--print-kubeconfig` output mode | ADR-007 | distribution_cli.feature | 1/1 GREEN | Done |
-| FR-009 | `--exec` subshell + signal-trap cleanup | ADR-007 | lifecycle_cleanup.feature | 0/2 TODO | Pending |
+| FR-009 | `--exec` subshell + signal-trap cleanup | ADR-007 | lifecycle_cleanup.feature | 1/1 GREEN (e2e @FR-009; crash-recovery #5 tracked under FR-011) | Done |
 | FR-010 | `--dry-run` | ADR-006 | discovery.feature + unit | 0/1 TODO | Pending |
 | FR-011 | `tessera gc` expired sweep | ADR-007 | lifecycle_cleanup.feature | 0/2 TODO | Pending |
 | FR-012 | `tessera ls` active sessions | ADR-008 | (unit + e2e) | 0/1 TODO | Pending |

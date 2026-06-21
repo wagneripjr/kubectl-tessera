@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/internal/preflight"
 	"github.com/wagneripjr/kubectl-tessera/internal/rbac"
 	"github.com/wagneripjr/kubectl-tessera/internal/scope"
+	"github.com/wagneripjr/kubectl-tessera/internal/subshell"
 	"github.com/wagneripjr/kubectl-tessera/internal/token"
 )
 
@@ -35,12 +37,10 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	if err := o.validate(); err != nil {
 		return err
 	}
-	if o.exec {
-		return fmt.Errorf("mint: --exec is not implemented yet; use --print-kubeconfig")
-	}
-	if !o.printKubeconfig && !o.dryRun {
-		return fmt.Errorf("mint: specify --print-kubeconfig (--exec is not implemented yet)")
-	}
+	// Mode resolution (FR-009): --exec is the default — interactive unless the user
+	// asked for --print-kubeconfig or --dry-run. validate() already rejects the
+	// --print-kubeconfig + --exec combination.
+	interactive := !o.printKubeconfig && !o.dryRun
 
 	restCfg, err := o.configFlags.ToRESTConfig()
 	if err != nil {
@@ -136,9 +136,48 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	}
 
 	fmt.Fprintln(stderr, audit(minted.ExpirationTimestamp.UTC()))
-	if o.printKubeconfig {
-		fmt.Fprintln(stdout, path)
+
+	if interactive {
+		// FR-009: spawn ${SHELL:-/bin/bash} with KUBECONFIG pointing at the throwaway
+		// file. On subshell exit (or SIGINT/SIGTERM) delete the RBAC object set and
+		// remove the kubeconfig file. SIGKILL bypasses the trap; gc reclaims orphans.
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/bash"
+		}
+		// Surface the throwaway kubeconfig path on the diagnostic stream (stdout stays
+		// the subshell's). NFR-008: stdout hygiene — only --print-kubeconfig writes there.
+		fmt.Fprintf(stderr, "tessera: kubeconfig=%s\n", path)
+
+		exitCode, err := subshell.Run(ctx, subshell.Config{
+			Shell:  shell,
+			Env:    append(os.Environ(), "KUBECONFIG="+path),
+			Stdin:  os.Stdin,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+			Cleanup: func(cleanupCtx context.Context) {
+				// Best-effort teardown on a fresh context (it must survive the
+				// SIGINT/SIGTERM that may have triggered it). Attempt both the RBAC
+				// delete and the file removal regardless of either's outcome.
+				if rbErr := rbac.Rollback(cleanupCtx, cs, created); rbErr != nil {
+					fmt.Fprintf(stderr, "tessera: warning: cleanup of session %s incomplete: %v\n", sessionID, rbErr)
+				}
+				if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
+					fmt.Fprintf(stderr, "tessera: warning: removing kubeconfig %s: %v\n", path, rmErr)
+				}
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("running subshell: %w", err)
+		}
+		if exitCode != 0 {
+			os.Exit(exitCode) // cleanup already ran synchronously inside subshell.Run
+		}
+		return nil
 	}
+
+	// --print-kubeconfig: leave the objects for gc and emit only the path on stdout.
+	fmt.Fprintln(stdout, path)
 	return nil
 }
 

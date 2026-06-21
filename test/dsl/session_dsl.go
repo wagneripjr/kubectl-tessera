@@ -287,20 +287,43 @@ func (s *SessionDSL) ThenMintedCredentialRejected(ctx context.Context, resource 
 	return nil
 }
 
-// ThenSessionObjectsGone asserts the session's managed objects are gone.
+// ThenSessionObjectsGone asserts the session's managed objects are gone. It first
+// requires that a session was actually minted (a session-id was recorded) — without
+// this guard the assertion is vacuously true when the mint creates nothing (e.g. an
+// unimplemented --exec), which would let a do-nothing SUT pass. It then polls, because
+// the SUT deletes with foreground propagation: the objects can still be finalizing when
+// the process exits, so a single read races the cluster. A do-nothing cleanup never
+// converges, so the teeth are preserved.
 func (s *SessionDSL) ThenSessionObjectsGone(ctx context.Context) error {
-	n, err := s.driver.CountManaged(ctx)
-	if err != nil {
-		return err
+	if s.last.SessionID == "" {
+		return fmt.Errorf("expected a session to have been minted, but no session-id was recorded (exit %d): %s",
+			s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
 	}
-	if n != 0 {
-		return fmt.Errorf("expected the session's managed objects to be gone, found %d", n)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n, err := s.driver.CountManaged(ctx)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("expected the session's managed objects to be gone, found %d", n)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
-	return nil
 }
 
-// ThenKubeconfigFileRemoved asserts the session kubeconfig file is gone.
+// ThenKubeconfigFileRemoved asserts the session kubeconfig file is gone. It first
+// requires that a kubeconfig path was recorded — otherwise the check is vacuously
+// true (KubeconfigFileExists("") is always false), which would let an --exec that
+// never wrote a kubeconfig pass.
 func (s *SessionDSL) ThenKubeconfigFileRemoved() error {
+	if s.last.KubeconfigPath == "" {
+		return fmt.Errorf("expected a session kubeconfig to have been created, but no path was recorded (exit %d): %s",
+			s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
 	exists, err := s.driver.KubeconfigFileExists(s.last.KubeconfigPath)
 	if err != nil {
 		return err
