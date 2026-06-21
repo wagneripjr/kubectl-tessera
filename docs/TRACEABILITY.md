@@ -43,9 +43,9 @@ behavior is unimplemented by design; see the project plan).
 
 | Bug ID | Severity | Status | Related Req | Related ADR | Fix Commit |
 |--------|----------|--------|-------------|-------------|------------|
-| — | — | — | — | — | — |
+| BUG-001 | Low | OPEN | FR-011, NFR-005 | — | — |
 
-_No bugs yet. New bugs go in `docs/bugs/BUG-NNN-slug.md` and add a row here._
+_New bugs go in `docs/bugs/BUG-NNN-slug.md` and add a row here._
 
 ## ADRs → Requirements
 
