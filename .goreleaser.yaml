@@ -72,7 +72,10 @@ krews:
       garbage-collects the identity when its lease expires — so you can hand
       out narrowly scoped cluster access without sharing admin credentials.
     short_description: "Mint short-lived, least-privilege scoped kubeconfigs"
-    skip_upload: auto
+    # Generate the manifest only; the krew-index PR is owned by the
+    # krew-release-bot job (ADR-012). `auto` would try to push to an
+    # unset repository on a real tag → GET /repos// 404 → release fails.
+    skip_upload: true
 
 release:
   github:
