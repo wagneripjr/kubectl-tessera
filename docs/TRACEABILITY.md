@@ -24,7 +24,8 @@ behavior is unimplemented by design; see the project plan).
 | FR-014 | stderr audit line | ADR-008 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-015 | `-o json` output (mint + ls) | ADR-008 | session_inventory.feature + unit | 1/1 GREEN (e2e @FR-015 ls -o json; unit output + descriptor) | Done |
 | FR-016 | Clear errors (lacks-create; k8s<1.24) | ADR-001 | session_inventory.feature + unit | 1/1 GREEN (e2e @FR-016 missing-create); k8s<1.24 unit-only (CI kind ≥1.34) | Done |
-| FR-017 | Multi-namespace one-set-per-ns | ADR-008 | (e2e) | 0/1 TODO | Pending |
+| FR-017 | Multi-namespace (explicit list; one SA, Role+RoleBinding per ns) | ADR-008 | multi_namespace.feature | 1/1 GREEN | Done |
+| FR-018 | All-namespaces wildcard (`-A`; ClusterRole+ClusterRoleBinding) | ADR-013 | multi_namespace.feature | 2/2 GREEN | Done |
 | NFR-001 | No token leakage + 0600 | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | NFR-002 | Create-as-user, no impersonation | ADR-005 | BOUNDARIES + code review | review-only by design | Pending |
 | NFR-003 | Signed releases + SBOM | ADR-003 | release workflow | CI-verified | Pending |
@@ -63,3 +64,4 @@ _New bugs go in `docs/bugs/BUG-NNN-slug.md` and add a row here._
 | ADR-010 | e2e gating (build tag + GODOG_TAGS) | Accepted | (testing infrastructure) |
 | ADR-011 | SSRR Incomplete coverage | Accepted | FR-013 |
 | ADR-012 | krew-release-bot for krew-index PR | Accepted | NFR-003 |
+| ADR-013 | All-namespaces wildcard via ClusterRoleBinding | Accepted | FR-018 |

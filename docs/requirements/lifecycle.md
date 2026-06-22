@@ -55,9 +55,33 @@ Surface precise errors for the common failure modes:
 
 ## FR-017: Multi-namespace sessions
 
-When multiple namespaces are requested, create one managed object set per namespace,
-sharing the session-id so the session is operated on atomically.
+When an explicit list of namespaces is requested (`-n ns-a,ns-b`), grant the requested scope
+in each of them as one atomically-managed session. To preserve the one-token model, a single
+ServiceAccount (created in the first requested namespace) is the subject of one Role +
+RoleBinding per requested namespace, so the single minted token reaches every listed
+namespace and no others. All objects share one session-id.
 
-- **Acceptance:** a two-namespace request yields one SA+Role+RoleBinding set per namespace,
-  all sharing one session-id; `gc`/cleanup removes them as a unit.
-- **Traces to:** ADR-008 · e2e.
+- **Acceptance:** a two-namespace request yields one ServiceAccount plus a Role+RoleBinding
+  per requested namespace, all sharing one session-id; the minted credential is allowed in
+  each requested namespace and denied in a namespace that was not requested; `gc`/cleanup
+  removes the whole set as a unit.
+- **Traces to:** ADR-008 · e2e (`multi_namespace.feature`).
+
+## FR-018: All-namespaces sessions (wildcard)
+
+When all namespaces are requested (`-A`/`--all-namespaces`, with `-n '*'` accepted as sugar),
+grant the requested scope over the namespaced resources in EVERY namespace — including
+namespaces created after the mint — via a single ClusterRole + ClusterRoleBinding bound to
+one ServiceAccount. This is the widest scope tessera can mint, so it is never a default
+(NFR-006), is gated cluster-wide (the SSAR pre-flight checks each rule with an empty
+namespace, so an operator who cannot already exercise the scope in every namespace is
+refused before anything is created), and emits a loud cluster-wide audit warning. `-A` cannot
+be combined with `--cluster-scoped` (which targets cluster-scoped resource *types*) nor with
+an explicit namespace list; a cluster-scoped resource type under `-A` is rejected with a
+pointer to `--cluster-scoped`.
+
+- **Acceptance:** an all-namespaces read session is allowed to read the resource in the
+  current namespace AND in a namespace created after the mint, and is denied the unrequested
+  verb; an operator who may only read in one namespace is refused, and the refusal creates no
+  managed objects anywhere (no leaked ClusterRoleBinding).
+- **Traces to:** ADR-013 · e2e (`multi_namespace.feature`).

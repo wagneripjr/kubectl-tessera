@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+
 	"github.com/wagneripjr/kubectl-tessera/internal/preflight"
 	"github.com/wagneripjr/kubectl-tessera/internal/scope"
 )
@@ -114,7 +116,7 @@ func TestValidateOutputFlag(t *testing.T) {
 
 func TestBuildCreateAttributes(t *testing.T) {
 	t.Run("namespaced set needs create on serviceaccounts/roles/rolebindings in the namespace", func(t *testing.T) {
-		attrs := buildCreateAttributes(false, "prod")
+		attrs := buildCreateAttributes(false, "prod", []string{"prod"})
 		got := map[string]string{} // resource -> namespace
 		for _, a := range attrs {
 			if a.Verb != "create" {
@@ -128,8 +130,27 @@ func TestBuildCreateAttributes(t *testing.T) {
 			}
 		}
 	})
-	t.Run("cluster-scoped set needs create on cluster roles/bindings cluster-wide", func(t *testing.T) {
-		attrs := buildCreateAttributes(true, "default")
+	t.Run("multi-namespace set needs create on roles/rolebindings in EACH namespace, SA in the first", func(t *testing.T) {
+		attrs := buildCreateAttributes(false, "prod", []string{"prod", "staging"})
+		// resource -> set of namespaces it was requested in
+		ns := map[string]map[string]bool{}
+		for _, a := range attrs {
+			if ns[a.Resource] == nil {
+				ns[a.Resource] = map[string]bool{}
+			}
+			ns[a.Resource][a.Namespace] = true
+		}
+		if !ns["serviceaccounts"]["prod"] || ns["serviceaccounts"]["staging"] {
+			t.Fatalf("serviceaccounts create namespaces = %v, want only the first (prod)", ns["serviceaccounts"])
+		}
+		for _, res := range []string{"roles", "rolebindings"} {
+			if !ns[res]["prod"] || !ns[res]["staging"] {
+				t.Fatalf("expected create on %q in BOTH prod and staging, got %v", res, ns[res])
+			}
+		}
+	})
+	t.Run("cluster-wide set needs create on cluster roles/bindings cluster-wide", func(t *testing.T) {
+		attrs := buildCreateAttributes(true, "default", nil)
 		ns := map[string]string{}
 		for _, a := range attrs {
 			ns[a.Resource] = a.Namespace
@@ -143,6 +164,99 @@ func TestBuildCreateAttributes(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestParseNamespaceList(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    []string
+		wantErr string
+	}{
+		{name: "single namespace", raw: "prod", want: []string{"prod"}},
+		{name: "comma list preserves order", raw: "prod,staging,dev", want: []string{"prod", "staging", "dev"}},
+		{name: "whitespace trimmed and duplicates dropped", raw: " prod , staging , prod ", want: []string{"prod", "staging"}},
+		{name: "empty entry rejected", raw: "prod,,staging", wantErr: "empty namespace"},
+		{name: "wildcard mixed into a list rejected", raw: "prod,*", wantErr: "wildcard"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseNamespaceList(tc.raw)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want one mentioning %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("parseNamespaceList(%q) = %v, want %v", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveNamespaceScope(t *testing.T) {
+	ns := func(s string) *string { return &s }
+	cases := []struct {
+		name           string
+		opts           mintOptions
+		wantNamespaces []string
+		wantAll        bool
+		wantErr        string
+	}{
+		{
+			name:           "explicit comma list yields the multi-namespace set",
+			opts:           mintOptions{configFlags: &genericclioptions.ConfigFlags{Namespace: ns("prod,staging")}},
+			wantNamespaces: []string{"prod", "staging"},
+		},
+		{
+			name:    "the -A flag selects all-namespaces",
+			opts:    mintOptions{allNamespaces: true, configFlags: &genericclioptions.ConfigFlags{Namespace: ns("")}},
+			wantAll: true,
+		},
+		{
+			name:    "the -n '*' sugar selects all-namespaces",
+			opts:    mintOptions{configFlags: &genericclioptions.ConfigFlags{Namespace: ns("*")}},
+			wantAll: true,
+		},
+		{
+			name:    "all-namespaces cannot be combined with an explicit list",
+			opts:    mintOptions{allNamespaces: true, configFlags: &genericclioptions.ConfigFlags{Namespace: ns("prod")}},
+			wantErr: "all-namespaces",
+		},
+		{
+			name:    "cluster-scoped cannot be combined with all-namespaces",
+			opts:    mintOptions{clusterScoped: true, allNamespaces: true, configFlags: &genericclioptions.ConfigFlags{Namespace: ns("")}},
+			wantErr: "cluster-scoped",
+		},
+		{
+			name: "cluster-scoped yields neither a namespace list nor the wildcard",
+			opts: mintOptions{clusterScoped: true, configFlags: &genericclioptions.ConfigFlags{Namespace: ns("")}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.opts.resolveNamespaceScope()
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want one mentioning %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.all != tc.wantAll {
+				t.Fatalf("all = %v, want %v", got.all, tc.wantAll)
+			}
+			if strings.Join(got.namespaces, ",") != strings.Join(tc.wantNamespaces, ",") {
+				t.Fatalf("namespaces = %v, want %v", got.namespaces, tc.wantNamespaces)
+			}
+		})
+	}
 }
 
 func TestScopeSummary(t *testing.T) {

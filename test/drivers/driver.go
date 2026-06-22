@@ -34,6 +34,9 @@ type MintRequest struct {
 	APIGroup      string
 	TTL           time.Duration
 	ClusterScoped bool
+	// AllNamespaces requests the cluster-wide all-namespaces grant (FR-018); the driver
+	// passes --all-namespaces. Mutually exclusive with an explicit Namespaces list.
+	AllNamespaces bool
 	Mode          MintMode
 	// Output selects the output format ("" = default, "json" = machine-readable).
 	Output string

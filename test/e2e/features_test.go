@@ -72,6 +72,7 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Before(func(c context.Context, sc *godog.Scenario) (context.Context, error) {
 		scnNS = namespaceFor(sc)
 		driver.SetNamespace(scnNS)
+		driver.ResetExtraNamespaces()
 		if err := driver.EnsureNamespace(c, scnNS); err != nil {
 			return c, err
 		}
@@ -79,9 +80,16 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 		return c, nil
 	})
 	ctx.After(func(c context.Context, sc *godog.Scenario, _ error) (context.Context, error) {
-		// Best-effort teardown: sweep + drop the namespace (cascades namespaced RBAC).
+		// Best-effort teardown: sweep, drop the scenario namespace and any sibling
+		// namespaces a multi/all-namespaces scenario created (each cascades its namespaced
+		// RBAC), then purge cluster-scoped leftovers (ClusterRole/ClusterRoleBinding survive
+		// namespace deletion) so nothing leaks into the next scenario.
 		_, _ = driver.Gc(c)
 		_ = driver.DeleteNamespace(c, scnNS)
+		for _, ns := range driver.ExtraNamespaces() {
+			_ = driver.DeleteNamespace(c, ns)
+		}
+		driver.PurgeClusterScopedManaged(c)
 		return c, nil
 	})
 
@@ -97,9 +105,15 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^an operator requests "([^"]*)" on "([^"]*)" in the session namespace$`,
 		func(verbs, resource string) error { current.GivenOperatorRequests(verbs, resource); return nil })
 	ctx.Step(`^an operator requests "([^"]*)" on the cluster-scoped resource "([^"]*)"$`,
-		func(verbs, resource string) error { current.GivenOperatorRequestsClusterScoped(verbs, resource); return nil })
+		func(verbs, resource string) error {
+			current.GivenOperatorRequestsClusterScoped(verbs, resource)
+			return nil
+		})
 	ctx.Step(`^an operator requests "([^"]*)" on "([^"]*)" named "([^"]*)" in the session namespace$`,
-		func(verb, resource, name string) error { current.GivenOperatorRequestsNamed(verb, resource, name); return nil })
+		func(verb, resource, name string) error {
+			current.GivenOperatorRequestsNamed(verb, resource, name)
+			return nil
+		})
 	ctx.Step(`^the operator mints the session$`,
 		func(c context.Context) error { return current.WhenOperatorMints(c) })
 	ctx.Step(`^the minted credential (is allowed|is not allowed) to "([^"]*)" "([^"]*)"$`,
@@ -115,7 +129,9 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a limited operator who may only read "([^"]*)"$`,
 		func(c context.Context, resource string) error { return current.GivenLimitedOperator(c, resource) })
 	ctx.Step(`^the limited operator requests "([^"]*)" on "([^"]*)" in the session namespace$`,
-		func(c context.Context, verb, resource string) error { return current.WhenLimitedOperatorRequests(c, verb, resource) })
+		func(c context.Context, verb, resource string) error {
+			return current.WhenLimitedOperatorRequests(c, verb, resource)
+		})
 	ctx.Step(`^the mint is refused$`, func() error { return current.ThenMintRefused() })
 	ctx.Step(`^the allowed and denied parts of the requested scope are reported$`,
 		func() error { return current.ThenAllowedDeniedReported() })
@@ -178,9 +194,44 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the intended objects are described on the primary output$`,
 		func() error { return current.ThenIntendedObjectsDescribed() })
 	ctx.Step(`^the limited operator mints exactly the read-only "([^"]*)" scope they are allowed$`,
-		func(c context.Context, resource string) error { return current.WhenLimitedOperatorMintsAllowedScope(c, resource) })
+		func(c context.Context, resource string) error {
+			return current.WhenLimitedOperatorMintsAllowedScope(c, resource)
+		})
 	ctx.Step(`^the operator is told which create permission is missing$`,
 		func() error { return current.ThenMissingCreatePermissionReported() })
+
+	// multi_namespace.feature
+	ctx.Step(`^an operator requests "([^"]*)" on "([^"]*)" across two namespaces$`,
+		func(c context.Context, verbs, resource string) error {
+			return current.GivenOperatorRequestsAcrossTwoNamespaces(c, verbs, resource)
+		})
+	ctx.Step(`^the minted credential is allowed to "([^"]*)" "([^"]*)" in each requested namespace$`,
+		func(c context.Context, verb, resource string) error {
+			return current.ThenCredentialReachesEachRequestedNamespace(c, verb, resource)
+		})
+	ctx.Step(`^the minted credential is not allowed to "([^"]*)" "([^"]*)" in an unrequested namespace$`,
+		func(c context.Context, verb, resource string) error {
+			return current.ThenCredentialDeniedInUnrequestedNamespace(c, verb, resource)
+		})
+	ctx.Step(`^an operator requests "([^"]*)" on "([^"]*)" in all namespaces$`,
+		func(verbs, resource string) error {
+			current.GivenOperatorRequestsAllNamespaces(verbs, resource)
+			return nil
+		})
+	ctx.Step(`^the minted credential (is allowed|is not allowed) to "([^"]*)" "([^"]*)" in the session namespace$`,
+		func(c context.Context, outcome, verb, resource string) error {
+			return current.ThenMintedCredentialCan(c, outcome, verb, resource, "")
+		})
+	ctx.Step(`^the minted credential is allowed to "([^"]*)" "([^"]*)" in a namespace created afterwards$`,
+		func(c context.Context, verb, resource string) error {
+			return current.ThenCredentialReachesANewNamespace(c, verb, resource)
+		})
+	ctx.Step(`^the limited operator requests "([^"]*)" on "([^"]*)" in all namespaces$`,
+		func(c context.Context, verb, resource string) error {
+			return current.WhenLimitedOperatorRequestsAllNamespaces(c, verb, resource)
+		})
+	ctx.Step(`^no managed objects are created anywhere for that attempt$`,
+		func(c context.Context) error { return current.ThenNoManagedObjectsCreatedAnywhere(c) })
 
 	// discovery.feature (@manual; excluded by default — pending until a webhook cluster exists)
 	ctx.Step(`^a cluster whose authorizer cannot enumerate permissions$`, func() error { return godog.ErrPending })

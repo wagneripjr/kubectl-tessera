@@ -29,6 +29,15 @@ type SessionDSL struct {
 	last     drivers.MintResult
 	mintedID string // session-id of a session minted earlier in the scenario, preserved
 	// across a subsequent `ls` call (which overwrites s.last with the ls output).
+
+	// Multi-namespace state (FR-017): the namespaces the session was asked to span,
+	// and one that was deliberately left out, so reachability can be proven each way.
+	requestedNamespaces  []string
+	unrequestedNamespace string
+	// baselineManaged is the cluster-wide managed-object count captured just before an
+	// expected-refusal mint, so the "created nothing anywhere" check (FR-018) has teeth
+	// even when earlier scenarios left managed objects behind.
+	baselineManaged int
 }
 
 // inventoryEntry is the black-box view of one `ls -o json` record. Defined here, not
@@ -63,6 +72,43 @@ func (s *SessionDSL) GivenOperatorRequestsClusterScoped(verbs, resource string) 
 		Verbs:         splitCSV(verbs),
 		Resources:     []string{resource},
 		ClusterScoped: true,
+		TTL:           15 * time.Minute,
+		Mode:          drivers.ModePrintKubeconfig,
+	}
+}
+
+// GivenOperatorRequestsAcrossTwoNamespaces sets up an explicit multi-namespace request
+// (FR-017). It uses the scenario namespace plus a freshly-created sibling as the two
+// requested namespaces, and creates a third, unrequested namespace so the negative
+// reachability probe lands on a namespace that really exists.
+func (s *SessionDSL) GivenOperatorRequestsAcrossTwoNamespaces(ctx context.Context, verbs, resource string) error {
+	nsA := s.driver.Namespace()
+	nsB := nsA + "-b"
+	nsC := nsA + "-c"
+	if err := s.driver.CreateTrackedNamespace(ctx, nsB); err != nil {
+		return fmt.Errorf("creating second requested namespace: %w", err)
+	}
+	if err := s.driver.CreateTrackedNamespace(ctx, nsC); err != nil {
+		return fmt.Errorf("creating unrequested namespace: %w", err)
+	}
+	s.requestedNamespaces = []string{nsA, nsB}
+	s.unrequestedNamespace = nsC
+	s.req = drivers.MintRequest{
+		Verbs:      splitCSV(verbs),
+		Resources:  []string{resource},
+		Namespaces: []string{nsA, nsB},
+		TTL:        15 * time.Minute,
+		Mode:       drivers.ModePrintKubeconfig,
+	}
+	return nil
+}
+
+// GivenOperatorRequestsAllNamespaces sets up an all-namespaces (wildcard) request (FR-018).
+func (s *SessionDSL) GivenOperatorRequestsAllNamespaces(verbs, resource string) {
+	s.req = drivers.MintRequest{
+		Verbs:         splitCSV(verbs),
+		Resources:     []string{resource},
+		AllNamespaces: true,
 		TTL:           15 * time.Minute,
 		Mode:          drivers.ModePrintKubeconfig,
 	}
@@ -167,6 +213,23 @@ func (s *SessionDSL) WhenLimitedOperatorRequests(ctx context.Context, verb, reso
 	return s.mint(ctx)
 }
 
+// WhenLimitedOperatorRequestsAllNamespaces mints AS the limited identity asking for an
+// all-namespaces grant (FR-018). It captures the cluster-wide managed-object count first
+// so the "created nothing anywhere" check can prove the refusal leaked nothing.
+func (s *SessionDSL) WhenLimitedOperatorRequestsAllNamespaces(ctx context.Context, verb, resource string) error {
+	n, err := s.driver.CountAllManaged(ctx)
+	if err != nil {
+		return fmt.Errorf("counting managed objects before the attempt: %w", err)
+	}
+	s.baselineManaged = n
+	s.req.Verbs = []string{verb}
+	s.req.Resources = []string{resource}
+	s.req.AllNamespaces = true
+	s.req.AsIdentity = limitedIdentity
+	s.req.Mode = drivers.ModePrintKubeconfig
+	return s.mint(ctx)
+}
+
 // WhenOperatorMintsPrintKubeconfig mints in print-kubeconfig mode for non-interactive use.
 func (s *SessionDSL) WhenOperatorMintsPrintKubeconfig(ctx context.Context) error {
 	s.req.Mode = drivers.ModePrintKubeconfig
@@ -242,6 +305,80 @@ func (s *SessionDSL) ThenMintedCredentialCan(ctx context.Context, outcome, verb,
 	want := outcome == "is allowed"
 	if allowed != want {
 		return fmt.Errorf("expected %q to %q %q (name=%q) but allowed=%v", verb, outcome, resource, name, allowed)
+	}
+	return nil
+}
+
+// ThenCredentialReachesEachRequestedNamespace asserts the multi-namespace credential is
+// authorized for the given verb/resource in every namespace the session requested (FR-017).
+func (s *SessionDSL) ThenCredentialReachesEachRequestedNamespace(ctx context.Context, verb, resource string) error {
+	if s.last.KubeconfigPath == "" {
+		return fmt.Errorf("mint produced no kubeconfig (exit %d): %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
+	if len(s.requestedNamespaces) == 0 {
+		return fmt.Errorf("no requested namespaces were recorded for this session")
+	}
+	for _, ns := range s.requestedNamespaces {
+		allowed, err := s.driver.MintedTokenCan(ctx, s.last.KubeconfigPath, verb, resource, "", ns, "")
+		if err != nil {
+			return fmt.Errorf("checking minted authz in %q: %w", ns, err)
+		}
+		if !allowed {
+			return fmt.Errorf("expected the credential to %q %q in requested namespace %q, but it was denied", verb, resource, ns)
+		}
+	}
+	return nil
+}
+
+// ThenCredentialDeniedInUnrequestedNamespace asserts the multi-namespace credential is NOT
+// authorized in a namespace the session did not request (FR-017) — proving the grant is the
+// requested set, not cluster-wide.
+func (s *SessionDSL) ThenCredentialDeniedInUnrequestedNamespace(ctx context.Context, verb, resource string) error {
+	if s.unrequestedNamespace == "" {
+		return fmt.Errorf("no unrequested namespace was recorded for this session")
+	}
+	allowed, err := s.driver.MintedTokenCan(ctx, s.last.KubeconfigPath, verb, resource, "", s.unrequestedNamespace, "")
+	if err != nil {
+		return fmt.Errorf("checking minted authz in %q: %w", s.unrequestedNamespace, err)
+	}
+	if allowed {
+		return fmt.Errorf("expected the credential to be denied %q %q in unrequested namespace %q, but it was allowed", verb, resource, s.unrequestedNamespace)
+	}
+	return nil
+}
+
+// ThenCredentialReachesANewNamespace creates a namespace AFTER the session was minted and
+// asserts the all-namespaces credential is authorized in it (FR-018) — the property an
+// enumerate-current-namespaces design could never satisfy.
+func (s *SessionDSL) ThenCredentialReachesANewNamespace(ctx context.Context, verb, resource string) error {
+	if s.last.KubeconfigPath == "" {
+		return fmt.Errorf("mint produced no kubeconfig (exit %d): %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
+	nsNew := s.driver.Namespace() + "-new"
+	if err := s.driver.CreateTrackedNamespace(ctx, nsNew); err != nil {
+		return fmt.Errorf("creating the after-the-fact namespace: %w", err)
+	}
+	allowed, err := s.driver.MintedTokenCan(ctx, s.last.KubeconfigPath, verb, resource, "", nsNew, "")
+	if err != nil {
+		return fmt.Errorf("checking minted authz in new namespace %q: %w", nsNew, err)
+	}
+	if !allowed {
+		return fmt.Errorf("expected the all-namespaces credential to %q %q in namespace %q created after minting, but it was denied", verb, resource, nsNew)
+	}
+	return nil
+}
+
+// ThenNoManagedObjectsCreatedAnywhere asserts a refused attempt created no managed objects
+// anywhere in the cluster — across all namespaces AND the cluster-scoped kinds (FR-018). It
+// compares against the baseline captured before the attempt, so it is robust to managed
+// objects left by earlier scenarios and would still catch a leaked ClusterRoleBinding.
+func (s *SessionDSL) ThenNoManagedObjectsCreatedAnywhere(ctx context.Context) error {
+	n, err := s.driver.CountAllManaged(ctx)
+	if err != nil {
+		return err
+	}
+	if n != s.baselineManaged {
+		return fmt.Errorf("expected no new managed objects anywhere (baseline %d), found %d", s.baselineManaged, n)
 	}
 	return nil
 }

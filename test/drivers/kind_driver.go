@@ -68,6 +68,11 @@ type KindDriver struct {
 	identities    map[string]string // limited-identity name -> kubeconfig path
 	lastExec      *exec.Cmd
 	lastExecStdin *os.File // write end of a background --exec session's held-open stdin
+
+	// extraNamespaces are sibling namespaces a scenario created beyond its own
+	// (multi-namespace / all-namespaces tests). The suite resets this per scenario and
+	// deletes them on teardown so namespaces don't leak across scenarios.
+	extraNamespaces []string
 }
 
 // NewKindDriver builds the binary once and connects to the kind API server. A
@@ -123,6 +128,23 @@ func (d *KindDriver) SetNamespace(ns string) { d.namespace = ns }
 // Namespace returns the active per-scenario namespace.
 func (d *KindDriver) Namespace() string { return d.namespace }
 
+// CreateTrackedNamespace creates a namespace and records it for teardown, so
+// multi-namespace and all-namespaces scenarios can span (and clean up) more than the
+// single per-scenario namespace.
+func (d *KindDriver) CreateTrackedNamespace(ctx context.Context, name string) error {
+	if err := d.EnsureNamespace(ctx, name); err != nil {
+		return err
+	}
+	d.extraNamespaces = append(d.extraNamespaces, name)
+	return nil
+}
+
+// ExtraNamespaces returns the sibling namespaces created during the current scenario.
+func (d *KindDriver) ExtraNamespaces() []string { return d.extraNamespaces }
+
+// ResetExtraNamespaces clears the tracked sibling namespaces (called per scenario).
+func (d *KindDriver) ResetExtraNamespaces() { d.extraNamespaces = nil }
+
 func repoRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -153,9 +175,13 @@ func (d *KindDriver) mintArgs(req MintRequest) []string {
 	if len(req.Verbs) > 0 {
 		args = append(args, "--verb", strings.Join(req.Verbs, ","))
 	}
-	if len(req.Namespaces) > 0 {
-		args = append(args, "--namespace", req.Namespaces[0])
-	} else if d.namespace != "" && !req.ClusterScoped {
+	switch {
+	case req.AllNamespaces:
+		args = append(args, "--all-namespaces")
+	case len(req.Namespaces) > 0:
+		// Multi-namespace (FR-017): the binary comma-splits a single --namespace value.
+		args = append(args, "--namespace", strings.Join(req.Namespaces, ","))
+	case d.namespace != "" && !req.ClusterScoped:
 		args = append(args, "--namespace", d.namespace)
 	}
 	if len(req.ResourceNames) > 0 {
@@ -404,6 +430,42 @@ func (d *KindDriver) CountManaged(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+// CountAllManaged counts tessera-managed objects across the WHOLE cluster — every
+// namespace plus the cluster-scoped kinds (ClusterRole/ClusterRoleBinding). Used to prove
+// a refused all-namespaces attempt created nothing, including a leaked cluster-wide
+// binding that a namespace-scoped count would miss. Not part of TesseraDriver — a concrete
+// harness helper.
+func (d *KindDriver) CountAllManaged(ctx context.Context) (int, error) {
+	opts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
+	count := 0
+	sas, err := d.admin.CoreV1().ServiceAccounts(metav1.NamespaceAll).List(ctx, opts)
+	if err != nil {
+		return 0, err
+	}
+	count += len(sas.Items)
+	roles, err := d.admin.RbacV1().Roles(metav1.NamespaceAll).List(ctx, opts)
+	if err != nil {
+		return 0, err
+	}
+	count += len(roles.Items)
+	rbs, err := d.admin.RbacV1().RoleBindings(metav1.NamespaceAll).List(ctx, opts)
+	if err != nil {
+		return 0, err
+	}
+	count += len(rbs.Items)
+	crs, err := d.admin.RbacV1().ClusterRoles().List(ctx, opts)
+	if err != nil {
+		return 0, err
+	}
+	count += len(crs.Items)
+	crbs, err := d.admin.RbacV1().ClusterRoleBindings().List(ctx, opts)
+	if err != nil {
+		return 0, err
+	}
+	count += len(crbs.Items)
+	return count, nil
+}
+
 func (d *KindDriver) UnmanagedRBACExists(ctx context.Context, name string) (bool, error) {
 	_, err := d.admin.RbacV1().RoleBindings(d.namespace).Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -634,6 +696,18 @@ func (d *KindDriver) PurgeAllManaged(ctx context.Context) {
 			_ = d.admin.CoreV1().ServiceAccounts(sas.Items[i].Namespace).Delete(ctx, sas.Items[i].Name, opts)
 		}
 	}
+}
+
+// PurgeClusterScopedManaged deletes every tessera-managed cluster-scoped object
+// (ClusterRole/ClusterRoleBinding) by the managed-by label. Per-scenario teardown drops
+// the scenario namespaces (cascading their namespaced RBAC), but cluster-scoped objects
+// from a --cluster-scoped or --all-namespaces print-kubeconfig mint outlive the namespace
+// and would otherwise leak across scenarios. Best effort — teardown, not an assertion.
+func (d *KindDriver) PurgeClusterScopedManaged(ctx context.Context) {
+	opts := metav1.DeleteOptions{}
+	lopts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
+	_ = d.admin.RbacV1().ClusterRoleBindings().DeleteCollection(ctx, opts, lopts)
+	_ = d.admin.RbacV1().ClusterRoles().DeleteCollection(ctx, opts, lopts)
 }
 
 func (d *KindDriver) DeleteSessionByLabel(ctx context.Context, sessionID string) error {

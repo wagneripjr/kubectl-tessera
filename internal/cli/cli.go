@@ -40,6 +40,7 @@ type mintOptions struct {
 	apiGroup        string
 	ttl             time.Duration
 	clusterScoped   bool
+	allNamespaces   bool
 	exec            bool
 	printKubeconfig bool
 	dryRun          bool
@@ -85,6 +86,8 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 	// NOTE: tessera's cluster-scoped flag is --cluster-scoped, not --cluster:
 	// ConfigFlags already owns --cluster (the kubeconfig cluster name). See ADR-001.
 	f.BoolVar(&o.clusterScoped, "cluster-scoped", false, "scope over cluster-scoped resources (ClusterRole/Binding)")
+	// FR-018: the all-namespaces wildcard. -n '*' is accepted as sugar (resolved in run.go).
+	f.BoolVarP(&o.allNamespaces, "all-namespaces", "A", false, "grant the scope in every namespace, including future ones (ClusterRole/Binding)")
 	f.BoolVar(&o.exec, "exec", false, "spawn a subshell with KUBECONFIG set; cleanup on exit (default mode)")
 	f.BoolVar(&o.printKubeconfig, "print-kubeconfig", false, "print the kubeconfig path to stdout; leave objects for gc")
 	f.BoolVar(&o.dryRun, "dry-run", false, "pre-flight and print intended objects; create nothing")

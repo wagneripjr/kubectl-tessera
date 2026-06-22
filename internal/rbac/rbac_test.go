@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -113,6 +114,102 @@ func assertBoundToServiceAccount(t *testing.T, subjects []rbacv1.Subject) {
 	if len(subjects) != 1 || subjects[0].Kind != "ServiceAccount" || subjects[0].Name != testName || subjects[0].Namespace != testNS {
 		t.Fatalf("subjects = %+v, want the created service account", subjects)
 	}
+}
+
+func TestCreateMultiNamespaceBindsOneServiceAccountInEach(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	ctx := context.Background()
+
+	spec := newSpec(false)
+	spec.Namespace = "prod"
+	spec.Namespaces = []string{"prod", "staging"}
+
+	created, err := Create(ctx, cs, spec)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	// Exactly one ServiceAccount, in the first (primary) namespace.
+	if _, err := cs.CoreV1().ServiceAccounts("prod").Get(ctx, testName, metav1.GetOptions{}); err != nil {
+		t.Fatalf("service account not created in prod: %v", err)
+	}
+	if _, err := cs.CoreV1().ServiceAccounts("staging").Get(ctx, testName, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected NO service account in staging, got err=%v", err)
+	}
+
+	// A Role + RoleBinding in EACH requested namespace, every binding pointing at the one SA.
+	for _, ns := range []string{"prod", "staging"} {
+		if _, err := cs.RbacV1().Roles(ns).Get(ctx, testName, metav1.GetOptions{}); err != nil {
+			t.Fatalf("role not created in %s: %v", ns, err)
+		}
+		rb, err := cs.RbacV1().RoleBindings(ns).Get(ctx, testName, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("role binding not created in %s: %v", ns, err)
+		}
+		if len(rb.Subjects) != 1 || rb.Subjects[0].Namespace != "prod" || rb.Subjects[0].Name != testName {
+			t.Fatalf("role binding in %s subjects = %+v, want the single SA prod/%s", ns, rb.Subjects, testName)
+		}
+	}
+
+	if got := strings.Join(created.BindingNamespaces, ","); got != "prod,staging" {
+		t.Fatalf("created.BindingNamespaces = %q, want %q", got, "prod,staging")
+	}
+
+	// Rollback removes the SA and every per-namespace Role+RoleBinding.
+	if err := Rollback(ctx, cs, created); err != nil {
+		t.Fatalf("Rollback returned error: %v", err)
+	}
+	assertGone(t, ctx, cs, "service account", func() error {
+		_, e := cs.CoreV1().ServiceAccounts("prod").Get(ctx, testName, metav1.GetOptions{})
+		return e
+	})
+	for _, ns := range []string{"prod", "staging"} {
+		assertGone(t, ctx, cs, "role in "+ns, func() error {
+			_, e := cs.RbacV1().Roles(ns).Get(ctx, testName, metav1.GetOptions{})
+			return e
+		})
+		assertGone(t, ctx, cs, "role binding in "+ns, func() error {
+			_, e := cs.RbacV1().RoleBindings(ns).Get(ctx, testName, metav1.GetOptions{})
+			return e
+		})
+	}
+}
+
+func TestCreateMultiNamespaceRollsBackEveryNamespaceWhenOneFails(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	ctx := context.Background()
+	// Fail the RoleBinding create in "staging" only: prod's Role+RoleBinding and the SA are
+	// already created, so reverse-order rollback must remove the prod set too (no orphans).
+	cs.PrependReactor("create", "rolebindings", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		if action.GetNamespace() == "staging" {
+			return true, nil, fmt.Errorf("forbidden: cannot create rolebindings in staging")
+		}
+		return false, nil, nil
+	})
+
+	spec := newSpec(false)
+	spec.Namespace = "prod"
+	spec.Namespaces = []string{"prod", "staging"}
+
+	if _, err := Create(ctx, cs, spec); err == nil {
+		t.Fatal("expected Create to fail when the staging role binding cannot be created")
+	}
+
+	// Nothing must survive in either namespace.
+	for _, ns := range []string{"prod", "staging"} {
+		assertGone(t, ctx, cs, "role in "+ns, func() error {
+			_, e := cs.RbacV1().Roles(ns).Get(ctx, testName, metav1.GetOptions{})
+			return e
+		})
+		assertGone(t, ctx, cs, "role binding in "+ns, func() error {
+			_, e := cs.RbacV1().RoleBindings(ns).Get(ctx, testName, metav1.GetOptions{})
+			return e
+		})
+	}
+	assertGone(t, ctx, cs, "service account", func() error {
+		_, e := cs.CoreV1().ServiceAccounts("prod").Get(ctx, testName, metav1.GetOptions{})
+		return e
+	})
 }
 
 func TestCreateRollsBackWhenBindingFails(t *testing.T) {

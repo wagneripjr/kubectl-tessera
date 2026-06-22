@@ -65,22 +65,32 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		return fmt.Errorf("building REST mapper: %w", err)
 	}
 
-	targetNS := o.targetNamespace()
+	nsScope, err := o.resolveNamespaceScope()
+	if err != nil {
+		return err
+	}
+	// A cluster-wide binding (ClusterRole+ClusterRoleBinding) backs both --cluster-scoped
+	// (cluster-scoped resource types) and -A/--all-namespaces (namespaced types, every
+	// namespace). The two differ only in scope resolution and the SSAR namespace.
+	clusterWide := o.clusterScoped || nsScope.all
 	owner := sanitizeDNS1123(resolveOwner(ctx, cs))
 
+	// Scope rules are namespace-independent; namespace consistency is enforced by the
+	// flag resolution above and the cluster-scoped check inside Resolve.
 	resolution, err := scope.Resolve(scope.Request{
 		Verbs:         o.verbs,
 		Resources:     o.resources,
 		ResourceNames: o.resourceNames,
 		APIGroup:      o.apiGroup,
 		ClusterScoped: o.clusterScoped,
-		Namespace:     targetNS,
 	}, mapper)
 	if err != nil {
 		return fmt.Errorf("resolving scope: %w", err)
 	}
 
-	pf, err := preflight.Check(ctx, cs, buildAttributes(resolution.Resources, o.verbs, o.resourceNames, targetNS))
+	// FR-003 grant gate. Cluster-wide grants (--cluster-scoped or -A) are checked once with
+	// an empty namespace; an explicit namespace list is checked in each namespace (FR-017).
+	pf, err := preflight.Check(ctx, cs, o.buildGrantAttributes(resolution.Resources, clusterWide, nsScope.namespaces))
 	if err != nil {
 		return fmt.Errorf("pre-flight authorization: %w", err)
 	}
@@ -95,16 +105,20 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	objLabels := labels.Set(owner, sessionID)
 	objAnnotations := map[string]string{labels.ExpiresAtKey: expires.Format(time.RFC3339)}
 
-	saNamespace := targetNS
-	if o.clusterScoped {
-		saNamespace = "default"
+	// The single ServiceAccount lives in the first requested namespace, or "default" for a
+	// cluster-wide grant (no namespaced binding to anchor it to).
+	saNamespace := "default"
+	if !clusterWide {
+		saNamespace = nsScope.namespaces[0]
 	}
+	bindNamespaces := nsScope.namespaces // nil for cluster-wide; ignored by rbac when ClusterScoped
 
 	// FR-016: the scope pre-flight (above) proved the operator may exercise the grant;
 	// this proves they may CREATE the RBAC objects that carry it. Without this, a missing
 	// create permission surfaces as a raw API 403 mid-creation. Checked as the invoking
-	// user (SSAR, never impersonation — NFR-002).
-	createPF, err := preflight.Check(ctx, cs, buildCreateAttributes(o.clusterScoped, saNamespace))
+	// user (SSAR, never impersonation — NFR-002). For an explicit list, create is checked
+	// in each namespace.
+	createPF, err := preflight.Check(ctx, cs, buildCreateAttributes(clusterWide, saNamespace, bindNamespaces))
 	if err != nil {
 		return fmt.Errorf("pre-flight create authorization: %w", err)
 	}
@@ -113,8 +127,32 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		return fmt.Errorf("mint refused: you lack permission to create the required RBAC objects")
 	}
 
+	// nsLabel is the audit/representation of the session's namespace breadth: a comma list,
+	// "*" for all-namespaces, or "cluster" (applied inside auditLine for --cluster-scoped).
+	nsLabel := strings.Join(nsScope.namespaces, ",")
+	if nsScope.all {
+		nsLabel = "*"
+	}
 	audit := func(effExpires time.Time) string {
-		return auditLine(sessionID, owner, o.verbs, o.resources, o.resourceNames, targetNS, o.ttl, effExpires, o.clusterScoped)
+		return auditLine(sessionID, owner, o.verbs, o.resources, o.resourceNames, nsLabel, o.ttl, effExpires, o.clusterScoped)
+	}
+
+	// FR-018: the all-namespaces grant is the widest scope tessera mints — surface it loudly
+	// on the diagnostic stream for both the preview and the real mint.
+	if nsScope.all {
+		_, _ = fmt.Fprintln(stderr, "tessera: warning: this session grants the requested scope across ALL namespaces (cluster-wide), including namespaces created later")
+	}
+
+	// descNamespaces represents the session's namespace breadth in ls/json/dry-run output:
+	// the explicit list, ["*"] for all-namespaces, or none for cluster-scoped.
+	var descNamespaces []string
+	switch {
+	case o.clusterScoped:
+		// cluster-scoped resource types have no namespace
+	case nsScope.all:
+		descNamespaces = []string{"*"}
+	default:
+		descNamespaces = nsScope.namespaces
 	}
 
 	if o.dryRun {
@@ -125,10 +163,8 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 			Owner:          owner,
 			Scope:          scopeSummary(o.verbs, o.resources),
 			ExpiresAt:      expires.Format(time.RFC3339),
-			CreatedObjects: createdObjectNames(name, o.clusterScoped),
-		}
-		if !o.clusterScoped {
-			intended.Namespaces = []string{targetNS}
+			Namespaces:     descNamespaces,
+			CreatedObjects: createdObjectNames(name, clusterWide),
 		}
 		if o.output == output.FormatJSON {
 			if err := output.JSON(stdout, intended); err != nil {
@@ -137,7 +173,10 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		} else {
 			_, _ = fmt.Fprintln(stdout, "tessera: dry-run — would create (nothing was created):")
 			for _, obj := range intended.CreatedObjects {
-				_, _ = fmt.Fprintf(stdout, "  %s in %q\n", obj, saNamespace)
+				_, _ = fmt.Fprintf(stdout, "  %s\n", obj)
+			}
+			if len(intended.Namespaces) > 0 {
+				_, _ = fmt.Fprintf(stdout, "  namespaces: %s\n", strings.Join(intended.Namespaces, ", "))
 			}
 			_, _ = fmt.Fprintf(stdout, "  scope: %s  expires: %s\n", intended.Scope, intended.ExpiresAt)
 		}
@@ -148,7 +187,8 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	created, err := rbac.Create(ctx, cs, rbac.Spec{
 		BaseName:      name,
 		Namespace:     saNamespace,
-		ClusterScoped: o.clusterScoped,
+		Namespaces:    bindNamespaces,
+		ClusterScoped: clusterWide,
 		Rules:         resolution.Rules,
 		Labels:        objLabels,
 		Annotations:   objAnnotations,
@@ -171,10 +211,17 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 			o.ttl, minted.ExpirationTimestamp.UTC().Format(time.RFC3339))
 	}
 
+	// Bind the kubeconfig context to the namespace only for a single-namespace session;
+	// multi-namespace, all-namespaces and cluster-scoped sessions leave it empty so the
+	// operator selects a namespace per command.
+	kcNamespace := ""
+	if !clusterWide && len(nsScope.namespaces) == 1 {
+		kcNamespace = nsScope.namespaces[0]
+	}
 	kcfg := kubeconfig.Build(kubeconfig.Params{
 		RESTConfig: restCfg,
 		Token:      minted.Token,
-		Namespace:  saNamespace,
+		Namespace:  kcNamespace,
 		SessionID:  sessionID,
 	})
 	path, err := kubeconfig.Write(kcfg, sessionID)
@@ -233,11 +280,9 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 			Owner:          owner,
 			Scope:          scopeSummary(o.verbs, o.resources),
 			ExpiresAt:      minted.ExpirationTimestamp.UTC().Format(time.RFC3339),
+			Namespaces:     descNamespaces,
 			KubeconfigPath: path,
-			CreatedObjects: createdObjectNames(name, o.clusterScoped),
-		}
-		if !o.clusterScoped {
-			desc.Namespaces = []string{targetNS}
+			CreatedObjects: createdObjectNames(name, clusterWide),
 		}
 		return output.JSON(stdout, desc)
 	}
@@ -265,24 +310,28 @@ func (o *mintOptions) validate() error {
 	return nil
 }
 
-// buildCreateAttributes lists the create permissions tessera needs to mint (FR-016): a
-// ServiceAccount plus the (Cluster)Role and (Cluster)RoleBinding that carry the grant.
-// Namespaced sets live in the SA namespace; cluster-scoped sets are cluster-wide (the SA
-// itself lives in "default").
-func buildCreateAttributes(clusterScoped bool, saNamespace string) []preflight.Attribute {
+// buildCreateAttributes lists the create permissions tessera needs to mint (FR-016): the
+// ServiceAccount plus the (Cluster)Role and (Cluster)RoleBinding that carry the grant. A
+// cluster-wide grant (--cluster-scoped or -A) needs create on the cluster kinds and the SA
+// in saNamespace; an explicit namespace list needs create on roles/rolebindings in EACH
+// namespace plus the SA in the first one (FR-017).
+func buildCreateAttributes(clusterWide bool, saNamespace string, bindNamespaces []string) []preflight.Attribute {
 	const rbacGroup = "rbac.authorization.k8s.io"
-	if clusterScoped {
+	if clusterWide {
 		return []preflight.Attribute{
 			{Verb: "create", Group: "", Resource: "serviceaccounts", Namespace: saNamespace},
 			{Verb: "create", Group: rbacGroup, Resource: "clusterroles"},
 			{Verb: "create", Group: rbacGroup, Resource: "clusterrolebindings"},
 		}
 	}
-	return []preflight.Attribute{
-		{Verb: "create", Group: "", Resource: "serviceaccounts", Namespace: saNamespace},
-		{Verb: "create", Group: rbacGroup, Resource: "roles", Namespace: saNamespace},
-		{Verb: "create", Group: rbacGroup, Resource: "rolebindings", Namespace: saNamespace},
+	attrs := []preflight.Attribute{{Verb: "create", Group: "", Resource: "serviceaccounts", Namespace: saNamespace}}
+	for _, ns := range bindNamespaces {
+		attrs = append(attrs,
+			preflight.Attribute{Verb: "create", Group: rbacGroup, Resource: "roles", Namespace: ns},
+			preflight.Attribute{Verb: "create", Group: rbacGroup, Resource: "rolebindings", Namespace: ns},
+		)
 	}
+	return attrs
 }
 
 // scopeSummary renders the requested grant the same way internal/session summarizes a
@@ -300,19 +349,85 @@ func createdObjectNames(name string, clusterScoped bool) []string {
 	return []string{"serviceaccount/" + name, "role/" + name, "rolebinding/" + name}
 }
 
-// targetNamespace resolves the namespace for namespaced scope. Cluster-scoped
-// sessions have no target namespace.
-func (o *mintOptions) targetNamespace() string {
+// namespaceScope is the resolved namespace mode for a mint: an explicit list of
+// namespaces to bind in, or the all-namespaces wildcard. Both empty means cluster-scoped.
+type namespaceScope struct {
+	namespaces []string
+	all        bool
+}
+
+// resolveNamespaceScope turns the namespace-related flags into a concrete mode and rejects
+// contradictory combinations (FR-017/FR-018). -n accepts a comma-separated list; -A or the
+// -n '*' sugar select the all-namespaces wildcard.
+func (o *mintOptions) resolveNamespaceScope() (namespaceScope, error) {
+	raw := ""
+	if o.configFlags.Namespace != nil {
+		raw = strings.TrimSpace(*o.configFlags.Namespace)
+	}
+	wildcard := o.allNamespaces || raw == "*"
+
 	if o.clusterScoped {
-		return ""
+		if wildcard {
+			return namespaceScope{}, fmt.Errorf("--cluster-scoped cannot be combined with --all-namespaces (-A): --cluster-scoped is for cluster-scoped resource types, -A is for namespaced resources in every namespace")
+		}
+		if raw != "" {
+			return namespaceScope{}, fmt.Errorf("--namespace cannot be used with --cluster-scoped; omit -n")
+		}
+		return namespaceScope{}, nil
 	}
-	if o.configFlags.Namespace != nil && *o.configFlags.Namespace != "" {
-		return *o.configFlags.Namespace
+	if wildcard {
+		if raw != "" && raw != "*" {
+			return namespaceScope{}, fmt.Errorf("--all-namespaces (-A) cannot be combined with an explicit --namespace list")
+		}
+		return namespaceScope{all: true}, nil
 	}
-	if ns, _, err := o.configFlags.ToRawKubeConfigLoader().Namespace(); err == nil && ns != "" {
-		return ns
+	if raw == "" {
+		if ns, _, err := o.configFlags.ToRawKubeConfigLoader().Namespace(); err == nil && ns != "" {
+			return namespaceScope{namespaces: []string{ns}}, nil
+		}
+		return namespaceScope{namespaces: []string{"default"}}, nil
 	}
-	return "default"
+	parts, err := parseNamespaceList(raw)
+	if err != nil {
+		return namespaceScope{}, err
+	}
+	return namespaceScope{namespaces: parts}, nil
+}
+
+// parseNamespaceList splits a comma-separated --namespace value, de-duplicating (preserving
+// first-seen order) and rejecting empty entries and a '*' mixed into a list — the wildcard
+// must stand alone (or use -A).
+func parseNamespaceList(raw string) ([]string, error) {
+	seen := map[string]bool{}
+	out := make([]string, 0)
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return nil, fmt.Errorf("empty namespace in --namespace %q", raw)
+		}
+		if p == "*" {
+			return nil, fmt.Errorf("wildcard '*' cannot be mixed into a --namespace list; use -A/--all-namespaces on its own")
+		}
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// buildGrantAttributes expands the grant SSAR over the session's namespace breadth: a single
+// pass with an empty namespace for a cluster-wide grant (--cluster-scoped or -A), or one pass
+// per namespace for an explicit list (FR-017).
+func (o *mintOptions) buildGrantAttributes(resources []scope.ResolvedResource, clusterWide bool, namespaces []string) []preflight.Attribute {
+	if clusterWide {
+		return buildAttributes(resources, o.verbs, o.resourceNames, "")
+	}
+	var attrs []preflight.Attribute
+	for _, ns := range namespaces {
+		attrs = append(attrs, buildAttributes(resources, o.verbs, o.resourceNames, ns)...)
+	}
+	return attrs
 }
 
 // resolveOwner asks the API server who the invoking user is via SelfSubjectReview,
