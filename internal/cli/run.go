@@ -14,18 +14,22 @@ import (
 
 	"github.com/wagneripjr/kubectl-tessera/internal/kubeconfig"
 	"github.com/wagneripjr/kubectl-tessera/internal/labels"
+	"github.com/wagneripjr/kubectl-tessera/internal/output"
 	"github.com/wagneripjr/kubectl-tessera/internal/preflight"
 	"github.com/wagneripjr/kubectl-tessera/internal/rbac"
 	"github.com/wagneripjr/kubectl-tessera/internal/scope"
+	"github.com/wagneripjr/kubectl-tessera/internal/session"
 	"github.com/wagneripjr/kubectl-tessera/internal/subshell"
 	"github.com/wagneripjr/kubectl-tessera/internal/token"
 )
 
-// run orchestrates the full mint flow (FR-001): resolve scope (FR-002), SSAR
-// pre-flight (FR-003), create RBAC as the invoking user (FR-004) with rollback
-// (FR-005), mint the token (FR-006), write a 0600 kubeconfig (FR-007), emit the
-// audit line (FR-014) and print the path (FR-008). All diagnostics go to stderr;
-// stdout carries only the kubeconfig path.
+// run orchestrates the full mint flow (FR-001): require a supported server (FR-016),
+// resolve scope (FR-002), SSAR pre-flight on the grant (FR-003) and on the create
+// permissions tessera needs (FR-016), then — unless previewing (--dry-run, FR-010) —
+// create RBAC as the invoking user (FR-004) with rollback (FR-005), mint the token
+// (FR-006), write a 0600 kubeconfig (FR-007), emit the audit line (FR-014) and deliver
+// the session: a subshell (FR-009), the path on stdout (FR-008), or a JSON descriptor
+// (FR-015). All diagnostics/audit go to stderr; stdout carries only the primary output.
 func (o *mintOptions) run(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -38,9 +42,10 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		return err
 	}
 	// Mode resolution (FR-009): --exec is the default — interactive unless the user
-	// asked for --print-kubeconfig or --dry-run. validate() already rejects the
-	// --print-kubeconfig + --exec combination.
-	interactive := !o.printKubeconfig && !o.dryRun
+	// asked for --print-kubeconfig, --dry-run, or machine-readable output (-o json,
+	// which has nowhere to stream into a subshell). validate() rejects the conflicting
+	// combinations (--print-kubeconfig + --exec, -o json + --exec).
+	interactive := !o.printKubeconfig && !o.dryRun && o.output != output.FormatJSON
 
 	restCfg, err := o.configFlags.ToRESTConfig()
 	if err != nil {
@@ -49,6 +54,11 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	cs, err := kubernetes.NewForConfig(restCfg)
 	if err != nil {
 		return fmt.Errorf("building clientset: %w", err)
+	}
+	// FR-016: fail clearly on a cluster that predates the TokenRequest API (k8s < 1.24)
+	// before doing any work, rather than with an opaque 404 deep in the mint.
+	if err := token.RequireSupported(cs.Discovery()); err != nil {
+		return err
 	}
 	mapper, err := o.configFlags.ToRESTMapper()
 	if err != nil {
@@ -90,13 +100,47 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		saNamespace = "default"
 	}
 
+	// FR-016: the scope pre-flight (above) proved the operator may exercise the grant;
+	// this proves they may CREATE the RBAC objects that carry it. Without this, a missing
+	// create permission surfaces as a raw API 403 mid-creation. Checked as the invoking
+	// user (SSAR, never impersonation — NFR-002).
+	createPF, err := preflight.Check(ctx, cs, buildCreateAttributes(o.clusterScoped, saNamespace))
+	if err != nil {
+		return fmt.Errorf("pre-flight create authorization: %w", err)
+	}
+	if !createPF.AllAllowed() {
+		preflight.RenderMissingCreate(stderr, createPF.Denied)
+		return fmt.Errorf("mint refused: you lack permission to create the required RBAC objects")
+	}
+
 	audit := func(effExpires time.Time) string {
 		return auditLine(sessionID, owner, o.verbs, o.resources, o.resourceNames, targetNS, o.ttl, effExpires, o.clusterScoped)
 	}
 
 	if o.dryRun {
-		_, _ = fmt.Fprintf(stderr, "tessera: dry-run: would create service account, %s and binding %q in %q with %d rule(s)\n",
-			roleKind(o.clusterScoped), name, saNamespace, len(resolution.Rules))
+		// FR-010: preview the intended object set on the primary output; create nothing.
+		// (SSRR discovery + the Incomplete notice is FR-013, deferred — see @manual.)
+		intended := session.Descriptor{
+			SessionID:      sessionID,
+			Owner:          owner,
+			Scope:          scopeSummary(o.verbs, o.resources),
+			ExpiresAt:      expires.Format(time.RFC3339),
+			CreatedObjects: createdObjectNames(name, o.clusterScoped),
+		}
+		if !o.clusterScoped {
+			intended.Namespaces = []string{targetNS}
+		}
+		if o.output == output.FormatJSON {
+			if err := output.JSON(stdout, intended); err != nil {
+				return err
+			}
+		} else {
+			_, _ = fmt.Fprintln(stdout, "tessera: dry-run — would create (nothing was created):")
+			for _, obj := range intended.CreatedObjects {
+				_, _ = fmt.Fprintf(stdout, "  %s in %q\n", obj, saNamespace)
+			}
+			_, _ = fmt.Fprintf(stdout, "  scope: %s  expires: %s\n", intended.Scope, intended.ExpiresAt)
+		}
 		_, _ = fmt.Fprintln(stderr, audit(expires))
 		return nil
 	}
@@ -180,6 +224,24 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		return nil
 	}
 
+	// FR-015: machine-readable session descriptor on stdout (session-id, scope, effective
+	// expiry, kubeconfig path, created objects). Like --print-kubeconfig, objects are left
+	// for gc. Diagnostics/audit stay on stderr.
+	if o.output == output.FormatJSON {
+		desc := session.Descriptor{
+			SessionID:      sessionID,
+			Owner:          owner,
+			Scope:          scopeSummary(o.verbs, o.resources),
+			ExpiresAt:      minted.ExpirationTimestamp.UTC().Format(time.RFC3339),
+			KubeconfigPath: path,
+			CreatedObjects: createdObjectNames(name, o.clusterScoped),
+		}
+		if !o.clusterScoped {
+			desc.Namespaces = []string{targetNS}
+		}
+		return output.JSON(stdout, desc)
+	}
+
 	// --print-kubeconfig: leave the objects for gc and emit only the path on stdout.
 	_, _ = fmt.Fprintln(stdout, path)
 	return nil
@@ -193,7 +255,49 @@ func (o *mintOptions) validate() error {
 	if o.printKubeconfig && o.exec {
 		return fmt.Errorf("--print-kubeconfig and --exec are mutually exclusive")
 	}
+	if err := output.Validate(o.output); err != nil {
+		return err
+	}
+	// -o json is non-interactive output; it cannot coexist with an interactive subshell.
+	if o.output == output.FormatJSON && o.exec {
+		return fmt.Errorf("--exec and -o json are mutually exclusive")
+	}
 	return nil
+}
+
+// buildCreateAttributes lists the create permissions tessera needs to mint (FR-016): a
+// ServiceAccount plus the (Cluster)Role and (Cluster)RoleBinding that carry the grant.
+// Namespaced sets live in the SA namespace; cluster-scoped sets are cluster-wide (the SA
+// itself lives in "default").
+func buildCreateAttributes(clusterScoped bool, saNamespace string) []preflight.Attribute {
+	const rbacGroup = "rbac.authorization.k8s.io"
+	if clusterScoped {
+		return []preflight.Attribute{
+			{Verb: "create", Group: "", Resource: "serviceaccounts", Namespace: saNamespace},
+			{Verb: "create", Group: rbacGroup, Resource: "clusterroles"},
+			{Verb: "create", Group: rbacGroup, Resource: "clusterrolebindings"},
+		}
+	}
+	return []preflight.Attribute{
+		{Verb: "create", Group: "", Resource: "serviceaccounts", Namespace: saNamespace},
+		{Verb: "create", Group: rbacGroup, Resource: "roles", Namespace: saNamespace},
+		{Verb: "create", Group: rbacGroup, Resource: "rolebindings", Namespace: saNamespace},
+	}
+}
+
+// scopeSummary renders the requested grant the same way internal/session summarizes a
+// Role's rules ("verbs:resources"), so a session reads identically in mint -o json,
+// dry-run, and ls.
+func scopeSummary(verbs, resources []string) string {
+	return strings.Join(verbs, ",") + ":" + strings.Join(resources, ",")
+}
+
+// createdObjectNames lists the object set a mint creates, all sharing one base name.
+func createdObjectNames(name string, clusterScoped bool) []string {
+	if clusterScoped {
+		return []string{"serviceaccount/" + name, "clusterrole/" + name, "clusterrolebinding/" + name}
+	}
+	return []string{"serviceaccount/" + name, "role/" + name, "rolebinding/" + name}
 }
 
 // targetNamespace resolves the namespace for namespaced scope. Cluster-scoped
@@ -258,11 +362,4 @@ func auditLine(sessionID, owner string, verbs, resources, names []string, namesp
 	}
 	return fmt.Sprintf("tessera: session-id=%s owner=%s scope=%s ns=%s ttl=%s expires=%s cluster-scoped=%t",
 		sessionID, owner, scopeStr, ns, ttl, expires.Format(time.RFC3339), clusterScoped)
-}
-
-func roleKind(clusterScoped bool) string {
-	if clusterScoped {
-		return "cluster role"
-	}
-	return "role"
 }

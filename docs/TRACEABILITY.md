@@ -17,13 +17,13 @@ behavior is unimplemented by design; see the project plan).
 | FR-007 | Isolated 0600 throwaway kubeconfig | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-008 | `--print-kubeconfig` output mode | ADR-007 | distribution_cli.feature | 1/1 GREEN | Done |
 | FR-009 | `--exec` subshell + signal-trap cleanup | ADR-007 | lifecycle_cleanup.feature | 1/1 GREEN (e2e @FR-009; crash-recovery #5 tracked under FR-011) | Done |
-| FR-010 | `--dry-run` | ADR-006 | discovery.feature + unit | 0/1 TODO | Pending |
+| FR-010 | `--dry-run` (preview intended objects; create nothing) | ADR-006 | session_inventory.feature + unit | 1/1 GREEN (e2e @FR-010; unit dry-run render) | Done |
 | FR-011 | `tessera gc` expired sweep | ADR-007 | lifecycle_cleanup.feature | 2/2 GREEN (unit + e2e @FR-011: selectivity #10, crash-recovery #5) | Done |
-| FR-012 | `tessera ls` active sessions | ADR-008 | (unit + e2e) | 0/1 TODO | Pending |
+| FR-012 | `tessera ls` active sessions | ADR-008 | session_inventory.feature + unit | 2/2 GREEN (e2e @FR-012 empty + populated; unit session.List) | Done |
 | FR-013 | SSRR discovery + `Incomplete` notice | ADR-006, ADR-011 | discovery.feature (@manual) + preflight unit | 0/1 TODO | Pending |
 | FR-014 | stderr audit line | ADR-008 | distribution_cli.feature | 1/1 GREEN | Done |
-| FR-015 | `-o json` output | ADR-008 | distribution_cli.feature + unit | 0/1 TODO | Pending |
-| FR-016 | Clear errors (lacks-create; k8s<1.24) | ADR-001 | unit + e2e | 0/2 TODO | Pending |
+| FR-015 | `-o json` output (mint + ls) | ADR-008 | session_inventory.feature + unit | 1/1 GREEN (e2e @FR-015 ls -o json; unit output + descriptor) | Done |
+| FR-016 | Clear errors (lacks-create; k8s<1.24) | ADR-001 | session_inventory.feature + unit | 1/1 GREEN (e2e @FR-016 missing-create); k8s<1.24 unit-only (CI kind ≥1.34) | Done |
 | FR-017 | Multi-namespace one-set-per-ns | ADR-008 | (e2e) | 0/1 TODO | Pending |
 | NFR-001 | No token leakage + 0600 | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | NFR-002 | Create-as-user, no impersonation | ADR-005 | BOUNDARIES + code review | review-only by design | Pending |

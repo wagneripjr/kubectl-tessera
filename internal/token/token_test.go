@@ -3,15 +3,60 @@ package token
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
 )
+
+// fakeServerVersion satisfies discovery.ServerVersionInterface with a canned version
+// (or a forced error), so RequireSupported is testable without a live API server.
+type fakeServerVersion struct {
+	info *version.Info
+	err  error
+}
+
+func (f fakeServerVersion) ServerVersion() (*version.Info, error) { return f.info, f.err }
+
+func TestRequireSupported(t *testing.T) {
+	cases := []struct {
+		name    string
+		major   string
+		minor   string
+		wantErr bool
+	}{
+		{name: "1.23 is too old", major: "1", minor: "23", wantErr: true},
+		{name: "exactly 1.24 is supported", major: "1", minor: "24", wantErr: false},
+		{name: "1.34 is supported", major: "1", minor: "34", wantErr: false},
+		{name: "managed-distro suffix 27+ parses as supported", major: "1", minor: "27+", wantErr: false},
+		{name: "managed-distro suffix 23+ parses as too old", major: "1", minor: "23+", wantErr: true},
+		{name: "future major is supported", major: "2", minor: "0", wantErr: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := RequireSupported(fakeServerVersion{info: &version.Info{Major: tc.major, Minor: tc.minor}})
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("RequireSupported(%s.%s) error = %v, wantErr = %v", tc.major, tc.minor, err, tc.wantErr)
+			}
+			if tc.wantErr && !strings.Contains(err.Error(), "requires Kubernetes >= 1.24 (TokenRequest API)") {
+				t.Errorf("expected the FR-016 literal in the error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestRequireSupportedPropagatesDiscoveryError(t *testing.T) {
+	err := RequireSupported(fakeServerVersion{err: fmt.Errorf("connection refused")})
+	if err == nil {
+		t.Fatal("expected RequireSupported to propagate a discovery failure")
+	}
+}
 
 var fixedNow = time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
 

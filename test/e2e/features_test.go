@@ -165,6 +165,23 @@ func registerSteps(ctx *godog.ScenarioContext) {
 		func(c context.Context) error { return current.ThenKubeconfigGrantsReadAccess(c, "pods") })
 	ctx.Step(`^the session audit details are written only to the diagnostic output$`, func() error { return current.ThenAuditOnDiagnosticOutput() })
 
+	// session_inventory.feature
+	ctx.Step(`^no tessera sessions are active$`,
+		func(c context.Context) error { return current.GivenNoActiveSessions(c) })
+	ctx.Step(`^the operator lists active sessions in machine-readable form$`,
+		func(c context.Context) error { return current.WhenOperatorListsSessionsJSON(c) })
+	ctx.Step(`^the inventory is empty$`, func() error { return current.ThenInventoryIsEmpty() })
+	ctx.Step(`^the inventory includes the active session with its owner and expiry$`,
+		func() error { return current.ThenInventoryIncludesActiveSession() })
+	ctx.Step(`^the operator previews the session with a dry run$`,
+		func(c context.Context) error { return current.WhenOperatorPreviewsDryRun(c) })
+	ctx.Step(`^the intended objects are described on the primary output$`,
+		func() error { return current.ThenIntendedObjectsDescribed() })
+	ctx.Step(`^the limited operator mints exactly the read-only "([^"]*)" scope they are allowed$`,
+		func(c context.Context, resource string) error { return current.WhenLimitedOperatorMintsAllowedScope(c, resource) })
+	ctx.Step(`^the operator is told which create permission is missing$`,
+		func() error { return current.ThenMissingCreatePermissionReported() })
+
 	// discovery.feature (@manual; excluded by default — pending until a webhook cluster exists)
 	ctx.Step(`^a cluster whose authorizer cannot enumerate permissions$`, func() error { return godog.ErrPending })
 	ctx.Step(`^the operator previews the scope with a dry run$`, func() error { return godog.ErrPending })

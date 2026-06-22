@@ -35,6 +35,8 @@ type MintRequest struct {
 	TTL           time.Duration
 	ClusterScoped bool
 	Mode          MintMode
+	// Output selects the output format ("" = default, "json" = machine-readable).
+	Output string
 	// AsIdentity selects which identity tessera runs as. "" = admin context;
 	// otherwise the name of a seeded limited identity (see SeedLimitedIdentity).
 	AsIdentity string
@@ -55,6 +57,7 @@ type TesseraDriver interface {
 	Mint(ctx context.Context, req MintRequest) (MintResult, error)
 	Gc(ctx context.Context) (MintResult, error)
 	Ls(ctx context.Context) (MintResult, error)
+	LsJSON(ctx context.Context) (MintResult, error)
 	// KillExecProcess force-kills the most recent --exec child (crash recovery #5).
 	KillExecProcess(ctx context.Context, signal string) error
 

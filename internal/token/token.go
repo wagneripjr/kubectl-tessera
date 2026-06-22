@@ -5,13 +5,48 @@ package token
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 )
+
+// minServerMinor is the first Kubernetes minor (in the 1.x line) to ship the TokenRequest
+// API as GA. Below this, tessera cannot mint and must say so plainly (FR-016).
+const minServerMinor = 24
+
+// RequireSupported fails clearly when the target cluster predates the TokenRequest API
+// (Kubernetes < 1.24). The returned error's message carries the literal FR-016 contract so
+// the operator gets an actionable line, not an opaque 404 deep in the mint. The minor
+// version may carry a non-numeric suffix on managed distributions (e.g. GKE's "27+"), so
+// only the leading digits are parsed.
+func RequireSupported(disco discovery.ServerVersionInterface) error {
+	info, err := disco.ServerVersion()
+	if err != nil {
+		return fmt.Errorf("discovering server version: %w", err)
+	}
+	major := leadingInt(info.Major)
+	minor := leadingInt(info.Minor)
+	if major < 1 || (major == 1 && minor < minServerMinor) {
+		return fmt.Errorf("server is Kubernetes %s.%s: tessera requires Kubernetes >= 1.24 (TokenRequest API)", info.Major, info.Minor)
+	}
+	return nil
+}
+
+// leadingInt parses the leading run of digits in s (e.g. "27+" -> 27, "" -> 0).
+func leadingInt(s string) int {
+	end := 0
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(s[:end]))
+	return n
+}
 
 // now is the package clock, overridable in tests for deterministic clamp checks.
 var now = time.Now

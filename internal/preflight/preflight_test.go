@@ -110,3 +110,36 @@ func TestRenderTableShowsAllowedAndDenied(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderMissingCreateEmitsTheActionableLiteralPerKind(t *testing.T) {
+	denied := []Decision{
+		{Attribute: Attribute{Verb: "create", Resource: "serviceaccounts", Namespace: "prod"}},
+		{Attribute: Attribute{Verb: "create", Resource: "roles", Namespace: "prod"}},
+		{Attribute: Attribute{Verb: "create", Resource: "rolebindings", Namespace: "prod"}},
+	}
+	var sb strings.Builder
+	RenderMissingCreate(&sb, denied)
+	out := sb.String()
+	for _, res := range []string{"serviceaccounts", "roles", "rolebindings"} {
+		if !strings.Contains(out, "missing verb: create on "+res) {
+			t.Fatalf("expected the FR-016 literal for %q, got:\n%s", res, out)
+		}
+	}
+	if !strings.Contains(out, "administrator must grant") {
+		t.Errorf("expected admin-guidance line, got:\n%s", out)
+	}
+}
+
+func TestRenderMissingCreateDeduplicatesByResource(t *testing.T) {
+	// A denial spanning several namespaces produces one denied Decision per namespace;
+	// the operator should still see each kind named once, not repeated.
+	denied := []Decision{
+		{Attribute: Attribute{Verb: "create", Resource: "rolebindings", Namespace: "a"}},
+		{Attribute: Attribute{Verb: "create", Resource: "rolebindings", Namespace: "b"}},
+	}
+	var sb strings.Builder
+	RenderMissingCreate(&sb, denied)
+	if n := strings.Count(sb.String(), "missing verb: create on rolebindings"); n != 1 {
+		t.Fatalf("expected rolebindings named once, got %d times:\n%s", n, sb.String())
+	}
+}

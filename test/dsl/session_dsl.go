@@ -8,6 +8,7 @@ package dsl
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -23,9 +24,20 @@ const (
 
 // SessionDSL carries per-scenario state across Given/When/Then steps.
 type SessionDSL struct {
-	driver *drivers.KindDriver
-	req    drivers.MintRequest
-	last   drivers.MintResult
+	driver   *drivers.KindDriver
+	req      drivers.MintRequest
+	last     drivers.MintResult
+	mintedID string // session-id of a session minted earlier in the scenario, preserved
+	// across a subsequent `ls` call (which overwrites s.last with the ls output).
+}
+
+// inventoryEntry is the black-box view of one `ls -o json` record. Defined here, not
+// imported from internal/session, so the acceptance suite stays black-box (ADR-008,
+// Gate G4): a change to the JSON contract SHOULD break these tests.
+type inventoryEntry struct {
+	SessionID string `json:"sessionID"`
+	Owner     string `json:"owner"`
+	ExpiresAt string `json:"expiresAt"`
 }
 
 // New returns a fresh DSL bound to the driver for one scenario.
@@ -417,6 +429,104 @@ func (s *SessionDSL) ThenKubeconfigGrantsReadAccess(ctx context.Context, resourc
 func (s *SessionDSL) ThenAuditOnDiagnosticOutput() error {
 	if !strings.Contains(s.last.Stderr, "session") {
 		return fmt.Errorf("expected audit details on the diagnostic output (stderr), got: %s", strings.TrimSpace(s.last.Stderr))
+	}
+	return nil
+}
+
+// GivenNoActiveSessions establishes the zero-managed-objects precondition for the
+// empty-inventory case. ls reads cluster-wide, so it directly purges every managed object
+// (DeleteNamespace is async and gc only reaps the expired) — see PurgeAllManaged.
+func (s *SessionDSL) GivenNoActiveSessions(ctx context.Context) error {
+	s.driver.PurgeAllManaged(ctx)
+	return nil
+}
+
+// WhenOperatorListsSessionsJSON lists active sessions in machine-readable form. It
+// preserves any session-id minted earlier in the scenario (the ls run carries no
+// session identity of its own) so ThenInventoryIncludesSession can match it.
+func (s *SessionDSL) WhenOperatorListsSessionsJSON(ctx context.Context) error {
+	s.mintedID = s.last.SessionID
+	res, err := s.driver.LsJSON(ctx)
+	if err != nil {
+		return fmt.Errorf("listing sessions: %w", err)
+	}
+	s.last = res
+	return nil
+}
+
+// WhenOperatorPreviewsDryRun previews the accumulated request without creating anything.
+func (s *SessionDSL) WhenOperatorPreviewsDryRun(ctx context.Context) error {
+	s.req.Mode = drivers.ModeDryRun
+	return s.mint(ctx)
+}
+
+// WhenLimitedOperatorMintsAllowedScope mints AS the limited identity requesting EXACTLY
+// the read-only scope it is permitted (so the scope pre-flight passes) — the mint must
+// then fail at the create-permission gate, not the scope gate (FR-016).
+func (s *SessionDSL) WhenLimitedOperatorMintsAllowedScope(ctx context.Context, resource string) error {
+	s.req.Verbs = []string{"get", "list", "watch"}
+	s.req.Resources = []string{resource}
+	s.req.AsIdentity = limitedIdentity
+	s.req.Mode = drivers.ModePrintKubeconfig
+	return s.mint(ctx)
+}
+
+// ThenInventoryIsEmpty asserts the machine-readable inventory is an empty list.
+func (s *SessionDSL) ThenInventoryIsEmpty() error {
+	if s.last.ExitCode != 0 {
+		return fmt.Errorf("expected ls to exit 0, got %d: %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
+	out := strings.TrimSpace(s.last.Stdout)
+	if out != "[]" {
+		return fmt.Errorf("expected an empty inventory %q, got: %q", "[]", out)
+	}
+	return nil
+}
+
+// ThenInventoryIncludesActiveSession asserts the inventory parses as JSON and contains
+// the session minted earlier, with a non-empty owner and expiry.
+func (s *SessionDSL) ThenInventoryIncludesActiveSession() error {
+	if s.last.ExitCode != 0 {
+		return fmt.Errorf("expected ls to exit 0, got %d: %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
+	if s.mintedID == "" {
+		return fmt.Errorf("no session was minted earlier in the scenario; nothing to look for")
+	}
+	var entries []inventoryEntry
+	if err := json.Unmarshal([]byte(s.last.Stdout), &entries); err != nil {
+		return fmt.Errorf("expected the inventory to parse as JSON, got %q: %w", strings.TrimSpace(s.last.Stdout), err)
+	}
+	for _, e := range entries {
+		if e.SessionID == s.mintedID {
+			if e.Owner == "" || e.ExpiresAt == "" {
+				return fmt.Errorf("inventory entry for %q has empty owner/expiry: %+v", s.mintedID, e)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("expected the inventory to include session %q, got: %q", s.mintedID, strings.TrimSpace(s.last.Stdout))
+}
+
+// ThenIntendedObjectsDescribed asserts the dry-run preview named the objects it would
+// create on the primary output (stdout) — service account, role and binding.
+func (s *SessionDSL) ThenIntendedObjectsDescribed() error {
+	if s.last.ExitCode != 0 {
+		return fmt.Errorf("expected the dry run to exit 0, got %d: %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
+	out := strings.ToLower(s.last.Stdout)
+	for _, want := range []string{"serviceaccount", "role", "binding"} {
+		if !strings.Contains(out, want) {
+			return fmt.Errorf("expected the dry-run preview to name the intended %q on the primary output, got: %q", want, strings.TrimSpace(s.last.Stdout))
+		}
+	}
+	return nil
+}
+
+// ThenMissingCreatePermissionReported asserts the operator was told which create
+// permission is missing — a clear, actionable message, not a raw API forbidden error.
+func (s *SessionDSL) ThenMissingCreatePermissionReported() error {
+	if !regexp.MustCompile(`(?i)missing verb: create on \w+`).MatchString(s.last.Stderr) {
+		return fmt.Errorf("expected a 'missing verb: create on <resource>' message on the diagnostic output, got: %s", strings.TrimSpace(s.last.Stderr))
 	}
 	return nil
 }

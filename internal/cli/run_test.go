@@ -93,6 +93,82 @@ func TestBuildAttributes(t *testing.T) {
 	}
 }
 
+func TestValidateOutputFlag(t *testing.T) {
+	cases := []struct {
+		name    string
+		opts    mintOptions
+		wantErr bool
+	}{
+		{name: "json output is accepted", opts: mintOptions{resources: []string{"pods"}, output: "json"}, wantErr: false},
+		{name: "unsupported output format is rejected", opts: mintOptions{resources: []string{"pods"}, output: "yaml"}, wantErr: true},
+		{name: "json output with exec is rejected (cannot stream json into a subshell)", opts: mintOptions{resources: []string{"pods"}, output: "json", exec: true}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.opts.validate(); (err != nil) != tc.wantErr {
+				t.Fatalf("validate() error = %v, wantErr = %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestBuildCreateAttributes(t *testing.T) {
+	t.Run("namespaced set needs create on serviceaccounts/roles/rolebindings in the namespace", func(t *testing.T) {
+		attrs := buildCreateAttributes(false, "prod")
+		got := map[string]string{} // resource -> namespace
+		for _, a := range attrs {
+			if a.Verb != "create" {
+				t.Fatalf("attr verb = %q, want create", a.Verb)
+			}
+			got[a.Resource] = a.Namespace
+		}
+		for _, res := range []string{"serviceaccounts", "roles", "rolebindings"} {
+			if ns, ok := got[res]; !ok || ns != "prod" {
+				t.Fatalf("expected create on %q in prod, got namespace %q (present=%v)", res, ns, ok)
+			}
+		}
+	})
+	t.Run("cluster-scoped set needs create on cluster roles/bindings cluster-wide", func(t *testing.T) {
+		attrs := buildCreateAttributes(true, "default")
+		ns := map[string]string{}
+		for _, a := range attrs {
+			ns[a.Resource] = a.Namespace
+		}
+		if ns["serviceaccounts"] != "default" {
+			t.Fatalf("serviceaccounts namespace = %q, want default", ns["serviceaccounts"])
+		}
+		for _, res := range []string{"clusterroles", "clusterrolebindings"} {
+			if v, ok := ns[res]; !ok || v != "" {
+				t.Fatalf("expected cluster-wide create on %q (empty namespace), got %q (present=%v)", res, v, ok)
+			}
+		}
+	})
+}
+
+func TestScopeSummary(t *testing.T) {
+	got := scopeSummary([]string{"get", "list", "watch"}, []string{"pods"})
+	if got != "get,list,watch:pods" {
+		t.Errorf("scopeSummary = %q, want %q", got, "get,list,watch:pods")
+	}
+}
+
+func TestCreatedObjectNames(t *testing.T) {
+	t.Run("namespaced names the namespaced kinds", func(t *testing.T) {
+		got := createdObjectNames("tessera-x", false)
+		want := []string{"serviceaccount/tessera-x", "role/tessera-x", "rolebinding/tessera-x"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("createdObjectNames = %v, want %v", got, want)
+		}
+	})
+	t.Run("cluster-scoped names the cluster kinds", func(t *testing.T) {
+		got := createdObjectNames("tessera-x", true)
+		want := []string{"serviceaccount/tessera-x", "clusterrole/tessera-x", "clusterrolebinding/tessera-x"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("createdObjectNames = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestAuditLine(t *testing.T) {
 	expires := time.Date(2026, 6, 19, 12, 15, 0, 0, time.UTC)
 	cases := []struct {

@@ -88,6 +88,23 @@ func RenderTable(w io.Writer, r Result) {
 	}
 }
 
+// RenderMissingCreate writes one actionable line per denied create attribute (FR-016):
+// `tessera: missing verb: create on <resource>`, followed by guidance that an admin must
+// grant it. The `missing verb: create on <resource>` substring is the stable contract the
+// operator (and the acceptance suite) reads. Deduplicates by resource so a denial that
+// spans several namespaces still reports each kind once.
+func RenderMissingCreate(w io.Writer, denied []Decision) {
+	seen := map[string]bool{}
+	for _, d := range denied {
+		if seen[d.Attribute.Resource] {
+			continue
+		}
+		seen[d.Attribute.Resource] = true
+		_, _ = fmt.Fprintf(w, "tessera: missing verb: create on %s\n", d.Attribute.Resource)
+	}
+	_, _ = fmt.Fprintln(w, "tessera: an administrator must grant create on these resources (or bind on a curated role).")
+}
+
 func scopeSuffix(a Attribute) string {
 	if a.Namespace == "" {
 		return " (cluster)"

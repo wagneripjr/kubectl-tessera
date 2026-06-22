@@ -170,6 +170,9 @@ func (d *KindDriver) mintArgs(req MintRequest) []string {
 	if req.ClusterScoped {
 		args = append(args, "--cluster-scoped")
 	}
+	if req.Output != "" {
+		args = append(args, "-o", req.Output)
+	}
 	switch req.Mode {
 	case ModePrintKubeconfig:
 		args = append(args, "--print-kubeconfig")
@@ -265,6 +268,11 @@ func (d *KindDriver) Gc(ctx context.Context) (MintResult, error) {
 
 func (d *KindDriver) Ls(ctx context.Context) (MintResult, error) {
 	return d.runBinary(ctx, false, "ls")
+}
+
+// LsJSON lists active sessions in machine-readable form (`ls -o json`).
+func (d *KindDriver) LsJSON(ctx context.Context) (MintResult, error) {
+	return d.runBinary(ctx, false, "ls", "-o", "json")
 }
 
 // runBinary spawns the SUT and captures its observable output. A non-zero exit is
@@ -595,6 +603,37 @@ func (d *KindDriver) DeleteNamespace(ctx context.Context, namespace string) erro
 		return nil
 	}
 	return err
+}
+
+// PurgeAllManaged directly deletes every tessera-managed object cluster-wide — across all
+// namespaces AND the cluster-scoped kinds. It is the precondition for the "no sessions
+// active" scenario: ls reads cluster-wide, so the empty case cannot rely on namespace
+// deletion (asynchronous — Roles in a still-Terminating namespace remain listable) nor on
+// gc (which only reaps EXPIRED sessions). Cluster-scoped kinds support DeleteCollection;
+// namespaced kinds do NOT support it across all namespaces, so they are listed (NamespaceAll
+// IS supported for List) and deleted per object. Best effort — teardown, not an assertion.
+func (d *KindDriver) PurgeAllManaged(ctx context.Context) {
+	opts := metav1.DeleteOptions{}
+	lopts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
+
+	_ = d.admin.RbacV1().ClusterRoleBindings().DeleteCollection(ctx, opts, lopts)
+	_ = d.admin.RbacV1().ClusterRoles().DeleteCollection(ctx, opts, lopts)
+
+	if rbs, err := d.admin.RbacV1().RoleBindings(metav1.NamespaceAll).List(ctx, lopts); err == nil {
+		for i := range rbs.Items {
+			_ = d.admin.RbacV1().RoleBindings(rbs.Items[i].Namespace).Delete(ctx, rbs.Items[i].Name, opts)
+		}
+	}
+	if roles, err := d.admin.RbacV1().Roles(metav1.NamespaceAll).List(ctx, lopts); err == nil {
+		for i := range roles.Items {
+			_ = d.admin.RbacV1().Roles(roles.Items[i].Namespace).Delete(ctx, roles.Items[i].Name, opts)
+		}
+	}
+	if sas, err := d.admin.CoreV1().ServiceAccounts(metav1.NamespaceAll).List(ctx, lopts); err == nil {
+		for i := range sas.Items {
+			_ = d.admin.CoreV1().ServiceAccounts(sas.Items[i].Namespace).Delete(ctx, sas.Items[i].Name, opts)
+		}
+	}
 }
 
 func (d *KindDriver) DeleteSessionByLabel(ctx context.Context, sessionID string) error {
