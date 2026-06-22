@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-06-22
+## [0.1.1] - 2026-06-22
 
-First public release.
+First public release. (v0.1.0 was tagged but never published — its release pipeline
+failed at cosign artifact signing; v0.1.1 ships the fix.)
 
 ### Added
 
@@ -28,5 +29,5 @@ First public release.
 - Signed (keyless cosign) and SBOM'd (syft SPDX) cross-platform release via goreleaser,
   plus a krew plugin manifest (NFR-001, NFR-003, NFR-004).
 
-[Unreleased]: https://github.com/wagneripjr/kubectl-tessera/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/wagneripjr/kubectl-tessera/releases/tag/v0.1.0
+[Unreleased]: https://github.com/wagneripjr/kubectl-tessera/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/wagneripjr/kubectl-tessera/releases/tag/v0.1.1
