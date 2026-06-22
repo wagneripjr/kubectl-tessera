@@ -13,10 +13,6 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/internal/session"
 )
 
-// newLsCmd builds the `ls` subcommand: list active sessions (session-id, owner, scope
-// summary, expires-at) derived from managed-object labels/annotations (FR-012). Default
-// output is a table; `-o json` emits the machine-readable inventory (FR-015) — an empty
-// inventory is `[]` and exit 0. The shared ConfigFlags (cf) resolves the cluster like kubectl.
 func newLsCmd(cf *genericclioptions.ConfigFlags) *cobra.Command {
 	var outputFormat string
 	cmd := &cobra.Command{

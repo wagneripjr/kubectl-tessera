@@ -15,7 +15,6 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/internal/labels"
 )
 
-// fixedNow pins the sweep clock so expiry is deterministic. past/future bracket it.
 var (
 	fixedNow = time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	past     = fixedNow.Add(-time.Hour)
@@ -63,7 +62,7 @@ func TestSweepKeepsUnexpiredManagedSet(t *testing.T) {
 func TestSweepIgnoresUnmanagedObjects(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	ctx := context.Background()
-	// Expired, but carries no managed-by label: the safety selector must never match it.
+
 	createRoleBinding(t, cs, meta("prod", "someone-elses-binding", unmanaged, expiresAnn(past)))
 
 	res, err := Sweep(ctx, cs, fixedNow)
@@ -96,7 +95,7 @@ func TestSweepIsIdempotentOnSecondRun(t *testing.T) {
 func TestSweepSkipsMissingExpiresAtAnnotation(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	ctx := context.Background()
-	// Managed but no expires-at: gc cannot prove it expired, so it must NOT delete it.
+
 	createSA(t, cs, meta("prod", "tessera-dave-1", managed, nil))
 
 	res, err := Sweep(ctx, cs, fixedNow)
@@ -161,7 +160,7 @@ func TestSweepDeletesClusterScopedSet(t *testing.T) {
 func TestSweepTreatsExactExpiryAsNotExpired(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	ctx := context.Background()
-	// Expiry exactly equal to now is NOT past (the rule is strict: now > expires-at).
+
 	createSA(t, cs, meta("prod", "tessera-heidi-1", managed, expiresAnn(fixedNow)))
 
 	res, err := Sweep(ctx, cs, fixedNow)
@@ -174,15 +173,11 @@ func TestSweepTreatsExactExpiryAsNotExpired(t *testing.T) {
 	assertPresent(t, "service account", func() error { return getSA(ctx, cs, "prod", "tessera-heidi-1") })
 }
 
-// --- helpers ---
-
 const (
 	managed   = true
 	unmanaged = false
 )
 
-// meta builds object metadata: managed sets the tessera label set (managed-by + owner +
-// session-id); unmanaged sets only a plain owner label so the managed-by selector misses it.
 func meta(ns, name string, isManaged bool, ann map[string]string) metav1.ObjectMeta {
 	lbls := map[string]string{labels.OwnerKey: "seed"}
 	if isManaged {

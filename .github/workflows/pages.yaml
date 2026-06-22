@@ -1,6 +1,3 @@
-# Deploy the static landing page (site/) to GitHub Pages.
-# Source: GitHub Actions (not a branch), so it never collides with the docs/ SDLC tree.
-# Enable once: repo Settings → Pages → Build and deployment → Source: GitHub Actions.
 name: pages
 
 on:
@@ -11,13 +8,11 @@ on:
       - ".github/workflows/pages.yaml"
   workflow_dispatch: {}
 
-# Allow the workflow to publish to Pages via OIDC.
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# One concurrent deploy; don't cancel an in-flight publish.
 concurrency:
   group: pages
   cancel-in-progress: false

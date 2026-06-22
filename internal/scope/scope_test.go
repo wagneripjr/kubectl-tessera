@@ -9,10 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// testMapper is a static RESTMapper covering the resources the FR-001 scenarios and
-// the scope-resolution rules exercise: pods (namespaced core), nodes (cluster-scoped
-// core), deployments (namespaced apps), and an ambiguous "events" (core +
-// events.k8s.io).
 func testMapper() meta.RESTMapper {
 	m := meta.NewDefaultRESTMapper([]schema.GroupVersion{
 		{Group: "", Version: "v1"},

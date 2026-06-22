@@ -32,9 +32,6 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// External observable contract (ADR-008). Defined here, NOT imported from
-// internal/labels, so the acceptance suite stays black-box (ATDD Gate G4): a change
-// to the SUT's label keys SHOULD break these tests.
 const (
 	managedByKey   = "app.kubernetes.io/managed-by"
 	managedByValue = "kubectl-tessera"
@@ -45,38 +42,27 @@ const (
 
 var sessionIDRe = regexp.MustCompile(`session-id[=:\s]+([a-z0-9-]+)`)
 
-// kubeconfigRe extracts the throwaway kubeconfig path from the SUT's stderr
-// diagnostic in --exec mode (where the path is NOT printed to stdout, unlike
-// --print-kubeconfig). This is what gives ThenKubeconfigFileRemoved real teeth.
 var kubeconfigRe = regexp.MustCompile(`kubeconfig=(\S+)`)
 
-// KindDriver satisfies the documented protocol-driver contract.
 var _ TesseraDriver = (*KindDriver)(nil)
 
-// KindDriver is the composite protocol driver: process adapter (the binary) +
-// cluster adapter (client-go against a real kind API server).
 type KindDriver struct {
 	binaryPath string
 	workDir    string
-	namespace  string // per-scenario namespace, set by the suite Before hook
+	namespace  string
 
 	adminConfig  *rest.Config
 	admin        *kubernetes.Clientset
 	adminDynamic dynamic.Interface
 	mapper       meta.RESTMapper
 
-	identities    map[string]string // limited-identity name -> kubeconfig path
+	identities    map[string]string
 	lastExec      *exec.Cmd
-	lastExecStdin *os.File // write end of a background --exec session's held-open stdin
+	lastExecStdin *os.File
 
-	// extraNamespaces are sibling namespaces a scenario created beyond its own
-	// (multi-namespace / all-namespaces tests). The suite resets this per scenario and
-	// deletes them on teardown so namespaces don't leak across scenarios.
 	extraNamespaces []string
 }
 
-// NewKindDriver builds the binary once and connects to the kind API server. A
-// failure here is a broken harness, not a valid RED.
 func NewKindDriver(ctx context.Context) (*KindDriver, error) {
 	root, err := repoRoot()
 	if err != nil {
@@ -122,15 +108,10 @@ func NewKindDriver(ctx context.Context) (*KindDriver, error) {
 	}, nil
 }
 
-// SetNamespace sets the active per-scenario namespace.
 func (d *KindDriver) SetNamespace(ns string) { d.namespace = ns }
 
-// Namespace returns the active per-scenario namespace.
 func (d *KindDriver) Namespace() string { return d.namespace }
 
-// CreateTrackedNamespace creates a namespace and records it for teardown, so
-// multi-namespace and all-namespaces scenarios can span (and clean up) more than the
-// single per-scenario namespace.
 func (d *KindDriver) CreateTrackedNamespace(ctx context.Context, name string) error {
 	if err := d.EnsureNamespace(ctx, name); err != nil {
 		return err
@@ -139,10 +120,8 @@ func (d *KindDriver) CreateTrackedNamespace(ctx context.Context, name string) er
 	return nil
 }
 
-// ExtraNamespaces returns the sibling namespaces created during the current scenario.
 func (d *KindDriver) ExtraNamespaces() []string { return d.extraNamespaces }
 
-// ResetExtraNamespaces clears the tracked sibling namespaces (called per scenario).
 func (d *KindDriver) ResetExtraNamespaces() { d.extraNamespaces = nil }
 
 func repoRoot() (string, error) {
@@ -162,14 +141,10 @@ func repoRoot() (string, error) {
 	}
 }
 
-// --- process adapter ---
-
 func (d *KindDriver) Mint(ctx context.Context, req MintRequest) (MintResult, error) {
 	return d.runBinary(ctx, req.Mode == ModeExec, d.mintArgs(req)...)
 }
 
-// mintArgs renders a MintRequest into the binary's CLI flags. Shared by Mint (which
-// blocks on the run) and MintExecBackground (which leaves the process running).
 func (d *KindDriver) mintArgs(req MintRequest) []string {
 	args := []string{"--resource", strings.Join(req.Resources, ",")}
 	if len(req.Verbs) > 0 {
@@ -179,7 +154,7 @@ func (d *KindDriver) mintArgs(req MintRequest) []string {
 	case req.AllNamespaces:
 		args = append(args, "--all-namespaces")
 	case len(req.Namespaces) > 0:
-		// Multi-namespace (FR-017): the binary comma-splits a single --namespace value.
+
 		args = append(args, "--namespace", strings.Join(req.Namespaces, ","))
 	case d.namespace != "" && !req.ClusterScoped:
 		args = append(args, "--namespace", d.namespace)
@@ -213,16 +188,6 @@ func (d *KindDriver) mintArgs(req MintRequest) []string {
 	return args
 }
 
-// MintExecBackground starts an --exec session in the BACKGROUND on a real blocking
-// shell and leaves it RUNNING, so a crash-recovery scenario can SIGKILL it (bypassing
-// the exit trap) and let gc reclaim the orphans. Unlike runBinary(isExec=true) — which
-// uses SHELL=/usr/bin/true + cmd.Run(), so the shell exits immediately and the trap
-// fires during the call — this points SHELL at /bin/sh and feeds it a stdin pipe whose
-// write end the driver HOLDS OPEN. A non-interactive /bin/sh reads its command stream
-// from stdin, so with no EOF it blocks and the process stays alive until signalled.
-// It records d.lastExec (live) so KillExecProcess can reach it, and parses the session
-// id + kubeconfig path from the SUT's streamed stderr (both printed before the shell
-// blocks). A timeout here is a broken harness, not a valid RED.
 func (d *KindDriver) MintExecBackground(ctx context.Context, req MintRequest) (MintResult, error) {
 	cmd := exec.CommandContext(ctx, d.binaryPath, d.mintArgs(req)...)
 	cmd.Env = append(os.Environ(), "SHELL=/bin/sh")
@@ -241,14 +206,11 @@ func (d *KindDriver) MintExecBackground(ctx context.Context, req MintRequest) (M
 		_ = stdinW.Close()
 		return MintResult{}, fmt.Errorf("starting binary: %w", err)
 	}
-	// The child holds its own dup of the read end; close the parent's copy so the only
-	// thing keeping the pipe open is stdinW (which the driver holds until kill).
+
 	_ = stdinR.Close()
 	d.lastExec = cmd
 	d.lastExecStdin = stdinW
 
-	// The SUT prints the audit line (session-id=...) and kubeconfig=... to stderr before
-	// it spawns the shell and blocks. Poll the captured stderr until both are present.
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		out := stderr.String()
@@ -269,8 +231,6 @@ func (d *KindDriver) MintExecBackground(ctx context.Context, req MintRequest) (M
 	}
 }
 
-// syncBuffer is an io.Writer safe for the os/exec stderr-copy goroutine to write while
-// the driver polls it. Used by MintExecBackground to read a live process's diagnostics.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf strings.Builder
@@ -296,20 +256,16 @@ func (d *KindDriver) Ls(ctx context.Context) (MintResult, error) {
 	return d.runBinary(ctx, false, "ls")
 }
 
-// LsJSON lists active sessions in machine-readable form (`ls -o json`).
 func (d *KindDriver) LsJSON(ctx context.Context) (MintResult, error) {
 	return d.runBinary(ctx, false, "ls", "-o", "json")
 }
 
-// runBinary spawns the SUT and captures its observable output. A non-zero exit is
-// DATA in the result, not a Go error — only a spawn failure returns an error.
 func (d *KindDriver) runBinary(ctx context.Context, isExec bool, args ...string) (MintResult, error) {
 	cmd := exec.CommandContext(ctx, d.binaryPath, args...)
-	// Inherit KUBECONFIG so admin-context runs use the kind cluster.
+
 	cmd.Env = os.Environ()
 	if isExec {
-		// Testability: drive --exec without a TTY by pointing SHELL at a no-op that
-		// exits immediately, and closing stdin (docs/design/protocol-drivers.md).
+
 		cmd.Env = append(cmd.Env, "SHELL=/usr/bin/true")
 		cmd.Stdin = nil
 	}
@@ -337,9 +293,6 @@ func (d *KindDriver) runBinary(ctx context.Context, isExec bool, args ...string)
 		res.KubeconfigPath = strings.TrimSpace(res.Stdout)
 	}
 	if isExec {
-		// --exec keeps stdout for the subshell; the throwaway kubeconfig path is
-		// surfaced as a stderr diagnostic instead. Capture it so the cleanup of the
-		// file is actually verifiable.
 		if m := kubeconfigRe.FindStringSubmatch(res.Stderr); m != nil {
 			res.KubeconfigPath = m[1]
 		}
@@ -356,9 +309,7 @@ func (d *KindDriver) KillExecProcess(_ context.Context, signal string) error {
 		sig = syscall.SIGTERM
 	}
 	err := d.lastExec.Process.Signal(sig)
-	// Release the held-open stdin so the (reparented) background shell gets EOF and
-	// exits, and reap the killed binary so a full-suite run accrues no zombies. The
-	// scenario asserts only cluster state, so this teardown is best-effort.
+
 	if d.lastExecStdin != nil {
 		_ = d.lastExecStdin.Close()
 		d.lastExecStdin = nil
@@ -366,8 +317,6 @@ func (d *KindDriver) KillExecProcess(_ context.Context, signal string) error {
 	go func(cmd *exec.Cmd) { _ = cmd.Wait() }(d.lastExec)
 	return err
 }
-
-// --- cluster adapter ---
 
 func (d *KindDriver) SessionObjectsCount(ctx context.Context, sessionID string) (int, error) {
 	sel := fmt.Sprintf("%s=%s,%s=%s", managedByKey, managedByValue, sessionIDKey, sessionID)
@@ -406,9 +355,6 @@ func (d *KindDriver) SessionObjectsExist(ctx context.Context, sessionID string) 
 	return n > 0, err
 }
 
-// CountManaged counts tessera-managed objects in the active namespace. Used to
-// assert "no managed objects were created" when no session-id is known (e.g. a
-// pre-flight refusal). Not part of TesseraDriver — a concrete harness helper.
 func (d *KindDriver) CountManaged(ctx context.Context) (int, error) {
 	opts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
 	count := 0
@@ -430,11 +376,6 @@ func (d *KindDriver) CountManaged(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// CountAllManaged counts tessera-managed objects across the WHOLE cluster — every
-// namespace plus the cluster-scoped kinds (ClusterRole/ClusterRoleBinding). Used to prove
-// a refused all-namespaces attempt created nothing, including a leaked cluster-wide
-// binding that a namespace-scoped count would miss. Not part of TesseraDriver — a concrete
-// harness helper.
 func (d *KindDriver) CountAllManaged(ctx context.Context) (int, error) {
 	opts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
 	count := 0
@@ -521,8 +462,6 @@ func (d *KindDriver) MintedTokenRequest(ctx context.Context, kubeconfigPath, res
 	return 0, listErr
 }
 
-// --- harness helpers ---
-
 func (d *KindDriver) SeedLimitedIdentity(ctx context.Context, name string, verbs, resources, resourceNames []string) error {
 	if _, err := d.admin.CoreV1().ServiceAccounts(d.namespace).Create(ctx,
 		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace}},
@@ -549,11 +488,6 @@ func (d *KindDriver) SeedLimitedIdentity(ctx context.Context, name string, verbs
 	return d.registerIdentityToken(ctx, name)
 }
 
-// SeedPartialCreatorIdentity seeds an operator that may read pods and create/delete
-// ServiceAccounts and Roles, but may NOT create RoleBindings. A real mint run AS this
-// identity therefore gets past the SA and Role and fails at the binding (403),
-// exercising reverse-order rollback (FR-005). The seed objects carry no managed-by
-// label, so they are invisible to CountManaged.
 func (d *KindDriver) SeedPartialCreatorIdentity(ctx context.Context, name string) error {
 	if _, err := d.admin.CoreV1().ServiceAccounts(d.namespace).Create(ctx,
 		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace}},
@@ -563,12 +497,10 @@ func (d *KindDriver) SeedPartialCreatorIdentity(ctx context.Context, name string
 	role := &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace},
 		Rules: []rbacv1.PolicyRule{
-			// read pods so the SSAR pre-flight passes and creation is reached
 			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch"}},
-			// create + delete SAs and Roles so creation reaches the binding and rollback can clean up
+
 			{APIGroups: []string{""}, Resources: []string{"serviceaccounts"}, Verbs: []string{"create", "delete"}},
 			{APIGroups: []string{"rbac.authorization.k8s.io"}, Resources: []string{"roles"}, Verbs: []string{"create", "delete"}},
-			// intentionally NO rolebindings verbs — the binding create returns 403
 		},
 	}
 	if _, err := d.admin.RbacV1().Roles(d.namespace).Create(ctx, role, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -585,8 +517,6 @@ func (d *KindDriver) SeedPartialCreatorIdentity(ctx context.Context, name string
 	return d.registerIdentityToken(ctx, name)
 }
 
-// registerIdentityToken mints a 1h token for the ServiceAccount `name` in the active
-// namespace, writes a kubeconfig for it, and registers it under d.identities[name].
 func (d *KindDriver) registerIdentityToken(ctx context.Context, name string) error {
 	tr, err := d.admin.CoreV1().ServiceAccounts(d.namespace).CreateToken(ctx, name,
 		&authenticationv1.TokenRequest{Spec: authenticationv1.TokenRequestSpec{ExpirationSeconds: ptr.To(int64(3600))}},
@@ -604,7 +534,7 @@ func (d *KindDriver) registerIdentityToken(ctx context.Context, name string) err
 
 func (d *KindDriver) SeedUnmanagedRBAC(ctx context.Context, name string) error {
 	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace}, // no managed-by label
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: d.namespace},
 		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "view"},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "default", Namespace: d.namespace}},
 	}
@@ -648,8 +578,6 @@ func (d *KindDriver) KubeconfigFileExists(path string) (bool, error) {
 	return err == nil, err
 }
 
-// --- lifecycle ---
-
 func (d *KindDriver) EnsureNamespace(ctx context.Context, namespace string) error {
 	_, err := d.admin.CoreV1().Namespaces().Create(ctx,
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}, metav1.CreateOptions{})
@@ -667,13 +595,6 @@ func (d *KindDriver) DeleteNamespace(ctx context.Context, namespace string) erro
 	return err
 }
 
-// PurgeAllManaged directly deletes every tessera-managed object cluster-wide — across all
-// namespaces AND the cluster-scoped kinds. It is the precondition for the "no sessions
-// active" scenario: ls reads cluster-wide, so the empty case cannot rely on namespace
-// deletion (asynchronous — Roles in a still-Terminating namespace remain listable) nor on
-// gc (which only reaps EXPIRED sessions). Cluster-scoped kinds support DeleteCollection;
-// namespaced kinds do NOT support it across all namespaces, so they are listed (NamespaceAll
-// IS supported for List) and deleted per object. Best effort — teardown, not an assertion.
 func (d *KindDriver) PurgeAllManaged(ctx context.Context) {
 	opts := metav1.DeleteOptions{}
 	lopts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
@@ -698,11 +619,6 @@ func (d *KindDriver) PurgeAllManaged(ctx context.Context) {
 	}
 }
 
-// PurgeClusterScopedManaged deletes every tessera-managed cluster-scoped object
-// (ClusterRole/ClusterRoleBinding) by the managed-by label. Per-scenario teardown drops
-// the scenario namespaces (cascading their namespaced RBAC), but cluster-scoped objects
-// from a --cluster-scoped or --all-namespaces print-kubeconfig mint outlive the namespace
-// and would otherwise leak across scenarios. Best effort — teardown, not an assertion.
 func (d *KindDriver) PurgeClusterScopedManaged(ctx context.Context) {
 	opts := metav1.DeleteOptions{}
 	lopts := metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", managedByKey, managedByValue)}
@@ -724,8 +640,6 @@ func (d *KindDriver) Close() {
 		_ = os.RemoveAll(d.workDir)
 	}
 }
-
-// --- helpers ---
 
 func (d *KindDriver) writeIdentityKubeconfig(path, token, namespace string) error {
 	caData := d.adminConfig.CAData

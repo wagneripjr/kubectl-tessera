@@ -12,8 +12,6 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/internal/labels"
 )
 
-// managedRole builds a tessera-managed Role for a session, mirroring what rbac.Create
-// stamps: managed-by + owner + session-id labels and the expires-at annotation.
 func managedRole(name, ns, owner, sessionID, expiresAt string, rules []rbacv1.PolicyRule) *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
@@ -99,7 +97,7 @@ func TestListGroupsAndSortsBySessionID(t *testing.T) {
 func TestListIgnoresUnmanagedObjects(t *testing.T) {
 	exp := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 	unmanaged := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "ns"}, // no managed-by label
+		ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "ns"},
 		Rules:      readPods(),
 	}
 	cs := fake.NewSimpleClientset(

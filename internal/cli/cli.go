@@ -1,10 +1,3 @@
-// Package cli wires the Cobra command tree and resolves cluster configuration via
-// k8s.io/cli-runtime ConfigFlags (resolving exactly the way kubectl does). The root
-// command is the `mint` behavior; `gc`, `ls`, and `version` are subcommands.
-//
-// This is a walking skeleton: flags parse and the resolved plan prints, but the
-// behaviors are not yet implemented. Feature logic is driven later via the ATDD
-// double loop (see docs/plans/).
 package cli
 
 import (
@@ -15,22 +8,12 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
-// BuildInfo carries version metadata injected at the entrypoint.
 type BuildInfo struct {
 	Version string
 	Commit  string
 	Date    string
 }
 
-// errNotImplemented is returned by skeleton behaviors so invocations exit non-zero
-// until the feature is built. It keeps the binary honest under the acceptance suite.
-const errNotImplemented = tesseraError("not implemented (walking skeleton)")
-
-type tesseraError string
-
-func (e tesseraError) Error() string { return string(e) }
-
-// mintOptions holds the resolved flags for the root (`mint`) command.
 type mintOptions struct {
 	configFlags *genericclioptions.ConfigFlags
 
@@ -47,7 +30,6 @@ type mintOptions struct {
 	output          string
 }
 
-// Execute builds the command tree and runs it, exiting non-zero on error.
 func Execute(info BuildInfo) {
 	if err := newRootCmd(info).Execute(); err != nil {
 		os.Exit(1)
@@ -72,9 +54,6 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 		},
 	}
 
-	// Standard kubectl config flags (--kubeconfig, --context, -n/--namespace,
-	// --cluster [kubeconfig cluster name], --user, --server, ...). These are
-	// persistent so subcommands inherit them.
 	cf.AddFlags(cmd.PersistentFlags())
 
 	f := cmd.Flags()
@@ -83,10 +62,9 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 	f.StringSliceVar(&o.resourceNames, "resource-name", nil, "narrow to named objects (comma-separated)")
 	f.StringVar(&o.apiGroup, "api-group", "", "API group, when a resource is ambiguous across groups")
 	f.DurationVar(&o.ttl, "ttl", 15*time.Minute, "credential lifetime (Go duration)")
-	// NOTE: tessera's cluster-scoped flag is --cluster-scoped, not --cluster:
-	// ConfigFlags already owns --cluster (the kubeconfig cluster name). See ADR-001.
+
 	f.BoolVar(&o.clusterScoped, "cluster-scoped", false, "scope over cluster-scoped resources (ClusterRole/Binding)")
-	// FR-018: the all-namespaces wildcard. -n '*' is accepted as sugar (resolved in run.go).
+
 	f.BoolVarP(&o.allNamespaces, "all-namespaces", "A", false, "grant the scope in every namespace, including future ones (ClusterRole/Binding)")
 	f.BoolVar(&o.exec, "exec", false, "spawn a subshell with KUBECONFIG set; cleanup on exit (default mode)")
 	f.BoolVar(&o.printKubeconfig, "print-kubeconfig", false, "print the kubeconfig path to stdout; leave objects for gc")

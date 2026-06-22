@@ -7,7 +7,6 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/internal/subshell"
 )
 
-// A normal shell exit must trigger the one-shot cleanup and report exit 0.
 func TestNormalShellExitRunsCleanup(t *testing.T) {
 	cleaned := 0
 	exitCode, err := subshell.Run(context.Background(), subshell.Config{
@@ -25,8 +24,6 @@ func TestNormalShellExitRunsCleanup(t *testing.T) {
 	}
 }
 
-// A non-zero shell exit is data, not an error: cleanup still runs and the code
-// is propagated. A session must be torn down even when the shell fails.
 func TestNonZeroShellExitStillRunsCleanup(t *testing.T) {
 	cleaned := 0
 	exitCode, err := subshell.Run(context.Background(), subshell.Config{
@@ -44,10 +41,6 @@ func TestNonZeroShellExitStillRunsCleanup(t *testing.T) {
 	}
 }
 
-// The crux: when the terminating signal (modelled here by a cancelled parent
-// context) ends the shell, cleanup must still run against a LIVE context — never
-// the cancelled one — or the teardown API calls would fail and orphan the very
-// objects we are cleaning up.
 func TestCleanupRunsWithLiveContextWhenParentCancelled(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -67,8 +60,6 @@ func TestCleanupRunsWithLiveContextWhenParentCancelled(t *testing.T) {
 	}
 }
 
-// A genuine spawn failure (no such shell) is reported as a Go error, and cleanup
-// still runs so a half-set-up session never leaks.
 func TestSpawnFailureReturnsErrorAndRunsCleanup(t *testing.T) {
 	cleaned := 0
 	_, err := subshell.Run(context.Background(), subshell.Config{

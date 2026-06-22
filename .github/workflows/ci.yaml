@@ -21,8 +21,6 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          # Full semver required — the action rejects a bare major like "v2"
-          # (invalid version string 'v2', expected format v1.2 or v1.2.3).
           version: v2.12.2
 
   unit:
@@ -36,7 +34,6 @@ jobs:
           cache: true
       - name: Build
         run: go build ./...
-      # Plain unit tests — no cluster required, fast, race-enabled.
       - name: Test
         run: go test ./... -race -count=1
 
@@ -46,8 +43,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Two supported Kubernetes minors. Pinned to real kindest/node tags;
-        # bump these as new patch releases land (dependabot won't touch them).
         k8s:
           - kindest/node:v1.34.8
           - kindest/node:v1.36.1
@@ -61,10 +56,6 @@ jobs:
         uses: helm/kind-action@v1.14.0
         with:
           node_image: ${{ matrix.k8s }}
-      # The godog BeforeSuite seeds the limited "operator" identity (a
-      # ServiceAccount + ClusterRole granting only the scope/RBAC verbs tessera
-      # needs) into the kind cluster, so the acceptance tests run as the
-      # least-privilege identity the tool is designed to use — not cluster-admin.
       - name: Acceptance tests (godog)
         env:
           GODOG_TAGS: "@e2e && ~@manual"

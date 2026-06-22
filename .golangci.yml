@@ -1,11 +1,6 @@
-# golangci-lint v2 configuration.
-# Schema: https://golangci-lint.run/usage/configuration/
-# Run locally with `golangci-lint run`. CI uses golangci/golangci-lint-action@v9.
 version: "2"
 
 linters:
-  # Start from the standard set and add the ones that matter for a CLI that
-  # mints credentials (gosec especially).
   enable:
     - govet
     - errcheck
@@ -19,35 +14,23 @@ linters:
     revive:
       rules:
         - name: exported
-          # Don't fail the build on missing doc comments — advisory only.
           disabled: true
     gosec:
       excludes:
-        # G104 overlaps with errcheck; avoid double-reporting unchecked errors.
         - G104
   exclusions:
     generated: lax
     rules:
-      # Test files: relax gosec (test fixtures, subprocess calls) and errcheck.
       - path: _test\.go
         linters:
           - gosec
           - errcheck
-      # G204 on the subshell exec is by design (FR-009): tessera's entire purpose is
-      # to spawn the invoking user's own resolved $SHELL (defaulted to /bin/bash),
-      # which is not attacker-controlled input — a user who can set $SHELL can already
-      # run code as themselves, so the variable command grants no escalation. The
-      # suppression is documented here (config is gate-exempt) rather than as an inline
-      # //nolint because the SDLC phase gate blocks editing internal/ while pending
-      # FRs lack specs. Scoped to the single file + the single rule.
       - path: internal/subshell/subshell\.go
         text: G204
         linters:
           - gosec
 
 formatters:
-  # Formatters moved out of `linters` in v2. gofumpt is a strict superset of
-  # gofmt; goimports also manages import grouping.
   enable:
     - gofumpt
     - goimports

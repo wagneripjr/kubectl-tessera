@@ -13,7 +13,7 @@ func TestValidate(t *testing.T) {
 		{"", false},
 		{"json", false},
 		{"yaml", true},
-		{"JSON", true}, // case-sensitive: only lowercase "json" is the contract
+		{"JSON", true},
 		{"table", true},
 	} {
 		err := Validate(tc.format)
@@ -34,8 +34,6 @@ func TestValidateRejectionNamesTheFormat(t *testing.T) {
 }
 
 func TestJSONEmptySliceMarshalsToArrayNotNull(t *testing.T) {
-	// The FR-012 empty-inventory contract: `ls -o json` with no sessions emits "[]".
-	// A nil slice would marshal to "null"; a non-nil empty slice must give "[]".
 	var b strings.Builder
 	if err := JSON(&b, []string{}); err != nil {
 		t.Fatalf("JSON: %v", err)
@@ -46,8 +44,6 @@ func TestJSONEmptySliceMarshalsToArrayNotNull(t *testing.T) {
 }
 
 func TestJSONNilSliceMarshalsToNull(t *testing.T) {
-	// Documents the trap the empty-inventory contract guards against: callers MUST
-	// pass a non-nil slice. A nil slice marshals to "null", which fails the contract.
 	var b strings.Builder
 	var nilSlice []string
 	if err := JSON(&b, nilSlice); err != nil {

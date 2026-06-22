@@ -1,9 +1,5 @@
 //go:build e2e
 
-// Package e2e wires the Gherkin acceptance specs (specs/features) to the DSL via
-// godog. Run with: go test -tags=e2e ./test/e2e/...  (requires a reachable kind
-// cluster). Select scenarios with GODOG_TAGS (default excludes @manual). See
-// ADR-009, ADR-010.
 package e2e
 
 import (
@@ -19,8 +15,6 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/test/dsl"
 )
 
-// Shared across the suite. godog runs scenarios sequentially by default, so a
-// package-level driver + per-scenario DSL is safe.
 var (
 	driver  *drivers.KindDriver
 	current *dsl.SessionDSL
@@ -30,7 +24,7 @@ var (
 func TestFeatures(t *testing.T) {
 	tags := os.Getenv("GODOG_TAGS")
 	if tags == "" {
-		tags = "~@manual" // exclude the webhook-authorizer scenario by default (ADR-011)
+		tags = "~@manual"
 	}
 
 	suite := godog.TestSuite{
@@ -56,7 +50,6 @@ func initializeSuite(sc *godog.TestSuiteContext) {
 		defer cancel()
 		d, err := drivers.NewKindDriver(ctx)
 		if err != nil {
-			// A broken harness is NOT a valid RED — fail loudly and stop.
 			panic(fmt.Sprintf("harness setup failed (build binary / reach kind): %v", err))
 		}
 		driver = d
@@ -80,10 +73,6 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 		return c, nil
 	})
 	ctx.After(func(c context.Context, sc *godog.Scenario, _ error) (context.Context, error) {
-		// Best-effort teardown: sweep, drop the scenario namespace and any sibling
-		// namespaces a multi/all-namespaces scenario created (each cascades its namespaced
-		// RBAC), then purge cluster-scoped leftovers (ClusterRole/ClusterRoleBinding survive
-		// namespace deletion) so nothing leaks into the next scenario.
 		_, _ = driver.Gc(c)
 		_ = driver.DeleteNamespace(c, scnNS)
 		for _, ns := range driver.ExtraNamespaces() {
@@ -96,12 +85,7 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	registerSteps(ctx)
 }
 
-// registerSteps binds Gherkin steps to the DSL. Every step is a CLOSURE that reads
-// the package-level `current` at CALL time. Do NOT register method values
-// (current.Method): godog runs the ScenarioInitializer before the Before hook sets
-// `current`, so a method value would bind to the previous scenario's DSL (or nil).
 func registerSteps(ctx *godog.ScenarioContext) {
-	// scope_enforcement.feature
 	ctx.Step(`^an operator requests "([^"]*)" on "([^"]*)" in the session namespace$`,
 		func(verbs, resource string) error { current.GivenOperatorRequests(verbs, resource); return nil })
 	ctx.Step(`^an operator requests "([^"]*)" on the cluster-scoped resource "([^"]*)"$`,
@@ -125,7 +109,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 			return current.ThenMintedCredentialCan(c, outcome, verb, resource, name)
 		})
 
-	// preflight_gate.feature
 	ctx.Step(`^a limited operator who may only read "([^"]*)"$`,
 		func(c context.Context, resource string) error { return current.GivenLimitedOperator(c, resource) })
 	ctx.Step(`^the limited operator requests "([^"]*)" on "([^"]*)" in the session namespace$`,
@@ -138,7 +121,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^no managed objects are created for that attempt$`,
 		func(c context.Context) error { return current.ThenNoManagedObjectsCreated(c) })
 
-	// lifecycle_cleanup.feature
 	ctx.Step(`^an operator mints a read-only session requesting a lifetime below the cluster minimum$`,
 		func(c context.Context) error { return current.GivenSubMinimumSession(c, "pods") })
 	ctx.Step(`^the minted credential works immediately$`,
@@ -171,7 +153,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the unmanaged role binding remains$`,
 		func(c context.Context) error { return current.ThenUnmanagedRoleBindingRemains(c, "unmanaged-rb") })
 
-	// distribution_cli.feature
 	ctx.Step(`^an operator requests a read-only "([^"]*)" session for non-interactive use$`,
 		func(resource string) error { current.GivenOperatorRequests("get,list,watch", resource); return nil })
 	ctx.Step(`^the operator mints the session in print-kubeconfig mode$`,
@@ -181,7 +162,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 		func(c context.Context) error { return current.ThenKubeconfigGrantsReadAccess(c, "pods") })
 	ctx.Step(`^the session audit details are written only to the diagnostic output$`, func() error { return current.ThenAuditOnDiagnosticOutput() })
 
-	// session_inventory.feature
 	ctx.Step(`^no tessera sessions are active$`,
 		func(c context.Context) error { return current.GivenNoActiveSessions(c) })
 	ctx.Step(`^the operator lists active sessions in machine-readable form$`,
@@ -200,7 +180,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the operator is told which create permission is missing$`,
 		func() error { return current.ThenMissingCreatePermissionReported() })
 
-	// multi_namespace.feature
 	ctx.Step(`^an operator requests "([^"]*)" on "([^"]*)" across two namespaces$`,
 		func(c context.Context, verbs, resource string) error {
 			return current.GivenOperatorRequestsAcrossTwoNamespaces(c, verbs, resource)
@@ -233,7 +212,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^no managed objects are created anywhere for that attempt$`,
 		func(c context.Context) error { return current.ThenNoManagedObjectsCreatedAnywhere(c) })
 
-	// discovery.feature (@manual; excluded by default — pending until a webhook cluster exists)
 	ctx.Step(`^a cluster whose authorizer cannot enumerate permissions$`, func() error { return godog.ErrPending })
 	ctx.Step(`^the operator previews the scope with a dry run$`, func() error { return godog.ErrPending })
 	ctx.Step(`^a "([^"]*)" warning is shown$`, func(string) error { return godog.ErrPending })
@@ -241,7 +219,6 @@ func registerSteps(ctx *godog.ScenarioContext) {
 }
 
 func namespaceFor(sc *godog.Scenario) string {
-	// Derive a stable, DNS-1123 namespace from the scenario id.
 	id := sc.Id
 	const max = 40
 	if len(id) > max {

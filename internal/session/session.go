@@ -1,7 +1,3 @@
-// Package session reads the tessera-managed object population back into active-session
-// descriptors for `tessera ls` (FR-012). The Descriptor is also the shape mint and
-// dry-run render under -o json (FR-015). Selection is the same managed-by contract gc
-// uses (ADR-008): only objects carrying the managed-by label are ever considered.
 package session
 
 import (
@@ -16,9 +12,6 @@ import (
 	"github.com/wagneripjr/kubectl-tessera/internal/labels"
 )
 
-// Descriptor is the canonical session shape rendered by ls (always) and by mint/dry-run
-// under -o json (the optional fields). Slice fields are omitempty so an ls record stays
-// minimal while a mint record can carry the kubeconfig path and created-object list.
 type Descriptor struct {
 	SessionID      string   `json:"sessionID"`
 	Owner          string   `json:"owner"`
@@ -29,10 +22,6 @@ type Descriptor struct {
 	CreatedObjects []string `json:"createdObjects,omitempty"`
 }
 
-// List returns one Descriptor per active managed session, derived from the Roles and
-// ClusterRoles tessera created (they carry the full label/annotation set AND the policy
-// rules needed for the scope summary). The result is always a non-nil slice (empty ⇒
-// "[]" under JSON, FR-012) and is sorted by session-id for stable output.
 func List(ctx context.Context, cs kubernetes.Interface) ([]Descriptor, error) {
 	lo := metav1.ListOptions{LabelSelector: labels.ManagedSelector()}
 	byID := map[string]*Descriptor{}
@@ -66,8 +55,6 @@ func List(ctx context.Context, cs kubernetes.Interface) ([]Descriptor, error) {
 	return out, nil
 }
 
-// upsert finds-or-creates the descriptor for the session this object belongs to and
-// fills in owner/expiry from its labels/annotations.
 func upsert(byID map[string]*Descriptor, lbls, anns map[string]string) *Descriptor {
 	id := lbls[labels.SessionIDKey]
 	d, ok := byID[id]
@@ -96,8 +83,6 @@ func addNamespace(d *Descriptor, ns string) {
 	d.Namespaces = append(d.Namespaces, ns)
 }
 
-// summarizeRules renders the policy rules as "verbs:resources" segments joined by ";",
-// preserving each rule's ordering (which mirrors what the operator requested).
 func summarizeRules(rules []rbacv1.PolicyRule) string {
 	segs := make([]string, 0, len(rules))
 	for _, r := range rules {

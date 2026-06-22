@@ -1,7 +1,3 @@
-// Package rbac creates the managed ServiceAccount, (Cluster)Role and
-// (Cluster)RoleBinding set as the invoking user, with reverse-order rollback on
-// partial failure. Creation must never use a privileged context or impersonation
-// (NFR-002, ADR-005). See FR-004, FR-005.
 package rbac
 
 import (
@@ -19,14 +15,6 @@ import (
 
 const rbacAPIGroup = "rbac.authorization.k8s.io"
 
-// Spec describes the managed RBAC set for a single mint. Every object shares
-// BaseName, Labels and Annotations. ClusterScoped selects (Cluster)Role/(Cluster)RoleBinding.
-//
-// Namespace is the ServiceAccount's home namespace. Namespaces lists the namespaces to place
-// a Role+RoleBinding in (FR-017): the ONE ServiceAccount in Namespace is the subject of every
-// binding, so a single minted token reaches each listed namespace. When Namespaces is empty
-// it defaults to [Namespace] (the single-namespace case). Namespaces is ignored when
-// ClusterScoped is set — a cluster-wide binding already spans every namespace.
 type Spec struct {
 	BaseName      string
 	Namespace     string
@@ -37,9 +25,6 @@ type Spec struct {
 	Annotations   map[string]string
 }
 
-// Created records what Create made, enough for token minting and rollback. For a namespaced
-// set BindingNamespaces lists every namespace a Role+RoleBinding was created in, so Rollback
-// reverses each one; it is empty for a cluster-scoped set.
 type Created struct {
 	ServiceAccountName      string
 	ServiceAccountNamespace string
@@ -47,9 +32,6 @@ type Created struct {
 	BindingNamespaces       []string
 }
 
-// Create makes the RBAC set in order (SA → (Cluster)Role → (Cluster)RoleBinding)
-// using cs (the invoking user's clientset). On any failure it rolls the
-// already-created objects back in reverse order and returns the original error.
 func Create(ctx context.Context, cs kubernetes.Interface, spec Spec) (Created, error) {
 	var undo []func()
 	rollback := func() {
@@ -68,8 +50,6 @@ func Create(ctx context.Context, cs kubernetes.Interface, spec Spec) (Created, e
 	}
 	undo = append(undo, func() { _ = cs.CoreV1().ServiceAccounts(spec.Namespace).Delete(ctx, spec.BaseName, foreground()) })
 
-	// The ONE ServiceAccount is the subject of every binding, whether namespaced (one per
-	// requested namespace, FR-017) or cluster-wide (one ClusterRoleBinding).
 	subjects := []rbacv1.Subject{{Kind: "ServiceAccount", Name: spec.BaseName, Namespace: spec.Namespace}}
 
 	var bindingNamespaces []string
@@ -91,8 +71,7 @@ func Create(ctx context.Context, cs kubernetes.Interface, spec Spec) (Created, e
 			return Created{}, fmt.Errorf("creating cluster role binding %s: %w", spec.BaseName, err)
 		}
 	} else {
-		// FR-017: a Role+RoleBinding per requested namespace, each bound to the single SA.
-		// Defaults to the SA's own namespace for the ordinary single-namespace case.
+
 		nsList := spec.Namespaces
 		if len(nsList) == 0 {
 			nsList = []string{spec.Namespace}
@@ -127,9 +106,6 @@ func Create(ctx context.Context, cs kubernetes.Interface, spec Spec) (Created, e
 	}, nil
 }
 
-// Rollback deletes a previously-created set in reverse order (binding → role → SA)
-// with foreground propagation. Used by the orchestrator when a later step (token
-// or kubeconfig) fails after a successful Create. NotFound is not an error.
 func Rollback(ctx context.Context, cs kubernetes.Interface, c Created) error {
 	var errs []error
 	swallow := func(err error) {
@@ -142,8 +118,7 @@ func Rollback(ctx context.Context, cs kubernetes.Interface, c Created) error {
 		swallow(cs.RbacV1().ClusterRoleBindings().Delete(ctx, c.ServiceAccountName, foreground()))
 		swallow(cs.RbacV1().ClusterRoles().Delete(ctx, c.ServiceAccountName, foreground()))
 	} else {
-		// Reverse every per-namespace binding (FR-017). Default to the SA's namespace for a
-		// Created built before BindingNamespaces was tracked.
+
 		nsList := c.BindingNamespaces
 		if len(nsList) == 0 {
 			nsList = []string{c.ServiceAccountNamespace}

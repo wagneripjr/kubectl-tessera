@@ -1,7 +1,3 @@
-// Package scope resolves a requested credential scope (verbs × resources ×
-// optional names) into concrete RBAC policy rules using a RESTMapper for
-// discovery. It validates namespaced-vs-cluster-scoped consistency before any
-// object is created. See docs/requirements/minting.md (FR-001, FR-002).
 package scope
 
 import (
@@ -12,34 +8,28 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// PolicyRule is the RBAC rule shape produced by Resolve, ready for rbac.Create.
 type PolicyRule = rbacv1.PolicyRule
 
-// Request is a resolved-flags view of what the operator asked to be able to do.
 type Request struct {
 	Verbs         []string
 	Resources     []string
 	ResourceNames []string
-	APIGroup      string // explicit --api-group; "" auto-resolves (and detects ambiguity)
+	APIGroup      string
 	ClusterScoped bool
-	Namespace     string // target namespace; must be "" when ClusterScoped
+	Namespace     string
 }
 
-// ResolvedResource is a resource string mapped to its real group and scope.
 type ResolvedResource struct {
 	Resource   string
 	Group      string
 	Namespaced bool
 }
 
-// Resolution is the outcome of Resolve: the resolved resources and the RBAC rules.
 type Resolution struct {
 	Resources []ResolvedResource
 	Rules     []PolicyRule
 }
 
-// Resolve maps each requested resource via the RESTMapper, enforces scope
-// consistency, and groups the result into one PolicyRule per API group.
 func Resolve(req Request, mapper meta.RESTMapper) (Resolution, error) {
 	if len(req.Resources) == 0 {
 		return Resolution{}, fmt.Errorf("at least one --resource is required")
@@ -80,8 +70,6 @@ func Resolve(req Request, mapper meta.RESTMapper) (Resolution, error) {
 	return Resolution{Resources: resolved, Rules: buildRules(resolved, req.Verbs, req.ResourceNames)}, nil
 }
 
-// buildRules groups resolved resources by API group (preserving first-seen order)
-// and emits one PolicyRule per group with the requested verbs and names.
 func buildRules(resolved []ResolvedResource, verbs, names []string) []PolicyRule {
 	order := make([]string, 0)
 	byGroup := make(map[string][]string)

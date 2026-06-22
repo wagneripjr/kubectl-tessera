@@ -15,8 +15,6 @@ import (
 	clienttesting "k8s.io/client-go/testing"
 )
 
-// fakeServerVersion satisfies discovery.ServerVersionInterface with a canned version
-// (or a forced error), so RequireSupported is testable without a live API server.
 type fakeServerVersion struct {
 	info *version.Info
 	err  error
@@ -60,7 +58,6 @@ func TestRequireSupportedPropagatesDiscoveryError(t *testing.T) {
 
 var fixedNow = time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
 
-// swapNow pins the package clock for deterministic clamp assertions.
 func swapNow(t *testing.T, at time.Time) {
 	t.Helper()
 	prev := now
@@ -68,8 +65,6 @@ func swapNow(t *testing.T, at time.Time) {
 	t.Cleanup(func() { now = prev })
 }
 
-// tokenReactor intercepts the serviceaccounts/token subresource create and returns
-// a canned TokenRequest status, so the test does not depend on fake CreateToken support.
 func tokenReactor(token string, expiry time.Time) clienttesting.ReactionFunc {
 	return func(action clienttesting.Action) (bool, runtime.Object, error) {
 		create := action.(clienttesting.CreateAction)
@@ -126,9 +121,6 @@ func TestMintDetectsClamping(t *testing.T) {
 	}
 }
 
-// echoExpiryReactor models a cluster that honors the requested lifetime: it returns a
-// token expiring fixedNow + the requested ExpirationSeconds. Tests then assert on Mint's
-// public result (ExpirationTimestamp, Floored) rather than the request it sent.
 func echoExpiryReactor(token string) clienttesting.ReactionFunc {
 	return func(action clienttesting.Action) (bool, runtime.Object, error) {
 		create := action.(clienttesting.CreateAction)

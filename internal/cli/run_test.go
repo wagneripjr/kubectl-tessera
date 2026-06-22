@@ -117,7 +117,7 @@ func TestValidateOutputFlag(t *testing.T) {
 func TestBuildCreateAttributes(t *testing.T) {
 	t.Run("namespaced set needs create on serviceaccounts/roles/rolebindings in the namespace", func(t *testing.T) {
 		attrs := buildCreateAttributes(false, "prod", []string{"prod"})
-		got := map[string]string{} // resource -> namespace
+		got := map[string]string{}
 		for _, a := range attrs {
 			if a.Verb != "create" {
 				t.Fatalf("attr verb = %q, want create", a.Verb)
@@ -132,7 +132,7 @@ func TestBuildCreateAttributes(t *testing.T) {
 	})
 	t.Run("multi-namespace set needs create on roles/rolebindings in EACH namespace, SA in the first", func(t *testing.T) {
 		attrs := buildCreateAttributes(false, "prod", []string{"prod", "staging"})
-		// resource -> set of namespaces it was requested in
+
 		ns := map[string]map[string]bool{}
 		for _, a := range attrs {
 			if ns[a.Resource] == nil {

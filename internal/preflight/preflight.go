@@ -1,7 +1,3 @@
-// Package preflight implements the SelfSubjectAccessReview authorization gate
-// (authoritative, FR-003). One SSAR is issued per requested attribute, as the
-// invoking user (no impersonation); any denial must abort the mint before any
-// object is created. See ADR-006.
 package preflight
 
 import (
@@ -14,8 +10,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// Attribute is one (verb, resource, namespace, name) the operator must be allowed
-// to perform. Group is the API group ("" for core); Name narrows to a single object.
 type Attribute struct {
 	Verb      string
 	Group     string
@@ -24,25 +18,19 @@ type Attribute struct {
 	Name      string
 }
 
-// Decision is the authorizer's verdict for one Attribute.
 type Decision struct {
 	Attribute Attribute
 	Allowed   bool
 	Reason    string
 }
 
-// Result aggregates every decision and the subset that was denied.
 type Result struct {
 	Decisions []Decision
 	Denied    []Decision
 }
 
-// AllAllowed reports whether every requested attribute was permitted.
 func (r Result) AllAllowed() bool { return len(r.Denied) == 0 }
 
-// Check issues one SelfSubjectAccessReview per attribute using cs (the invoking
-// user's clientset — never impersonation). A transport/API error short-circuits
-// and is returned; authorization denials are collected into the Result, not an error.
 func Check(ctx context.Context, cs kubernetes.Interface, attrs []Attribute) (Result, error) {
 	var res Result
 	for _, a := range attrs {
@@ -70,8 +58,6 @@ func Check(ctx context.Context, cs kubernetes.Interface, attrs []Attribute) (Res
 	return res, nil
 }
 
-// RenderTable writes a human-readable allowed/denied table to w (stderr). The
-// literal verdict markers ALLOWED/DENIED let callers and tests assert outcomes.
 func RenderTable(w io.Writer, r Result) {
 	_, _ = fmt.Fprintln(w, "tessera: pre-flight authorization (SelfSubjectAccessReview):")
 	for _, d := range r.Decisions {
@@ -88,11 +74,6 @@ func RenderTable(w io.Writer, r Result) {
 	}
 }
 
-// RenderMissingCreate writes one actionable line per denied create attribute (FR-016):
-// `tessera: missing verb: create on <resource>`, followed by guidance that an admin must
-// grant it. The `missing verb: create on <resource>` substring is the stable contract the
-// operator (and the acceptance suite) reads. Deduplicates by resource so a denial that
-// spans several namespaces still reports each kind once.
 func RenderMissingCreate(w io.Writer, denied []Decision) {
 	seen := map[string]bool{}
 	for _, d := range denied {

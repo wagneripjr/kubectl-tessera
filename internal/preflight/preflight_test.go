@@ -12,8 +12,6 @@ import (
 	clienttesting "k8s.io/client-go/testing"
 )
 
-// allowVerbsReactor makes SelfSubjectAccessReview.Create echo back an Allowed
-// decision for any verb in allow, and a denied decision (with a reason) otherwise.
 func allowVerbsReactor(allow ...string) clienttesting.ReactionFunc {
 	allowed := map[string]bool{}
 	for _, v := range allow {
@@ -131,8 +129,6 @@ func TestRenderMissingCreateEmitsTheActionableLiteralPerKind(t *testing.T) {
 }
 
 func TestRenderMissingCreateDeduplicatesByResource(t *testing.T) {
-	// A denial spanning several namespaces produces one denied Decision per namespace;
-	// the operator should still see each kind named once, not repeated.
 	denied := []Decision{
 		{Attribute: Attribute{Verb: "create", Resource: "rolebindings", Namespace: "a"}},
 		{Attribute: Attribute{Verb: "create", Resource: "rolebindings", Namespace: "b"}},

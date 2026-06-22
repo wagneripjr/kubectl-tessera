@@ -129,7 +129,6 @@ func TestCreateMultiNamespaceBindsOneServiceAccountInEach(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	// Exactly one ServiceAccount, in the first (primary) namespace.
 	if _, err := cs.CoreV1().ServiceAccounts("prod").Get(ctx, testName, metav1.GetOptions{}); err != nil {
 		t.Fatalf("service account not created in prod: %v", err)
 	}
@@ -137,7 +136,6 @@ func TestCreateMultiNamespaceBindsOneServiceAccountInEach(t *testing.T) {
 		t.Fatalf("expected NO service account in staging, got err=%v", err)
 	}
 
-	// A Role + RoleBinding in EACH requested namespace, every binding pointing at the one SA.
 	for _, ns := range []string{"prod", "staging"} {
 		if _, err := cs.RbacV1().Roles(ns).Get(ctx, testName, metav1.GetOptions{}); err != nil {
 			t.Fatalf("role not created in %s: %v", ns, err)
@@ -155,7 +153,6 @@ func TestCreateMultiNamespaceBindsOneServiceAccountInEach(t *testing.T) {
 		t.Fatalf("created.BindingNamespaces = %q, want %q", got, "prod,staging")
 	}
 
-	// Rollback removes the SA and every per-namespace Role+RoleBinding.
 	if err := Rollback(ctx, cs, created); err != nil {
 		t.Fatalf("Rollback returned error: %v", err)
 	}
@@ -178,8 +175,7 @@ func TestCreateMultiNamespaceBindsOneServiceAccountInEach(t *testing.T) {
 func TestCreateMultiNamespaceRollsBackEveryNamespaceWhenOneFails(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	ctx := context.Background()
-	// Fail the RoleBinding create in "staging" only: prod's Role+RoleBinding and the SA are
-	// already created, so reverse-order rollback must remove the prod set too (no orphans).
+
 	cs.PrependReactor("create", "rolebindings", func(action clienttesting.Action) (bool, runtime.Object, error) {
 		if action.GetNamespace() == "staging" {
 			return true, nil, fmt.Errorf("forbidden: cannot create rolebindings in staging")
@@ -195,7 +191,6 @@ func TestCreateMultiNamespaceRollsBackEveryNamespaceWhenOneFails(t *testing.T) {
 		t.Fatal("expected Create to fail when the staging role binding cannot be created")
 	}
 
-	// Nothing must survive in either namespace.
 	for _, ns := range []string{"prod", "staging"} {
 		assertGone(t, ctx, cs, "role in "+ns, func() error {
 			_, e := cs.RbacV1().Roles(ns).Get(ctx, testName, metav1.GetOptions{})

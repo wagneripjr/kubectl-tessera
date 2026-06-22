@@ -6,8 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newVersionCmd prints full build metadata. The root command also exposes a
-// bare `--version` (cobra built-in) for the short form.
 func newVersionCmd(info BuildInfo) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
