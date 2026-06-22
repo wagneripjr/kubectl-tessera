@@ -28,11 +28,11 @@ behavior is unimplemented by design; see the project plan).
 | FR-018 | All-namespaces wildcard (`-A`; ClusterRole+ClusterRoleBinding) | ADR-013 | multi_namespace.feature | 2/2 GREEN | Done |
 | NFR-001 | No token leakage + 0600 | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | NFR-002 | Create-as-user, no impersonation | ADR-005 | BOUNDARIES + code review | review-only by design | Pending |
-| NFR-003 | Signed releases + SBOM | ADR-003 | release workflow | CI-verified | Pending |
-| NFR-004 | Cross-platform binaries | ADR-003 | goreleaser snapshot | CI-verified | Pending |
+| NFR-003 | Signed releases + SBOM | ADR-003 | release workflow | v0.1.1 GREEN: cosign bundle + per-archive SBOM; `verify-blob --bundle` OK | Done |
+| NFR-004 | Cross-platform binaries | ADR-003 | release workflow | v0.1.1 GREEN: 6 binaries (linux/darwin/windows × amd64/arm64) | Done |
 | NFR-005 | gc idempotency / cron-safe | ADR-007 | lifecycle_cleanup.feature | 1/1 GREEN (unit idempotency + e2e @NFR-005 selectivity #10) | Done |
 | NFR-006 | Fail-safe defaults | ADR-004 | scope_enforcement.feature | 1/1 GREEN | Done |
-| NFR-007 | Apache-2.0 license | ADR-002 | LICENSE present | n/a | Pending |
+| NFR-007 | Apache-2.0 license | ADR-002 | LICENSE present (shipped in v0.1.1 archives) | n/a | Done |
 | NFR-008 | stdout hygiene contract | ADR-007 | distribution_cli.feature | 1/1 GREEN | Done |
 
 > Acceptance criteria #1–#11 (from the implementation plan) map onto the feature files above;
