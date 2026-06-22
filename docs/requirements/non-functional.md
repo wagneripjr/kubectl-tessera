@@ -30,7 +30,8 @@ property that makes the non-admin case a real security boundary.
 Because this tool mints credentials, releases must be cosign-keyless-signed and ship a
 Software Bill of Materials.
 
-- **Acceptance:** a release produces a cosign signature + certificate over `checksums.txt`
+- **Acceptance:** a release produces a cosign keyless Sigstore bundle
+  (`checksums.txt.bundle`, carrying signature + certificate) over `checksums.txt`
   and an SPDX-JSON SBOM per archive.
 - **Traces to:** ADR-003 · release workflow.
 
