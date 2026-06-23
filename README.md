@@ -68,19 +68,50 @@ Either way, the binary is `kubectl-tessera`, invoked as `kubectl tessera`.
 kubectl tessera --resource pods [flags]
 ```
 
+Run `kubectl tessera` with **no arguments** to print this help, the flags, and the examples below.
+
+### Common use cases
+
+```bash
+# Read-only interactive shell on pods in the current namespace (default verbs get,list,watch)
+kubectl tessera --resource pods
+
+# Hand an AI agent a self-contained, auto-expiring read-only kubeconfig for prod
+export KUBECONFIG="$(kubectl tessera \
+  --resource pods,deployments,events --namespace prod --ttl 1h --print-kubeconfig)"
+
+# Ephemeral cluster-wide reader across every resource type (quote the wildcard)
+export KUBECONFIG="$(kubectl tessera \
+  --resource '*' --all-namespaces --ttl 1h --print-kubeconfig)"
+
+# Scoped write for an incident: edit one named deployment in prod
+kubectl tessera --verb get,list,update,patch \
+  --resource deployments --resource-name web --namespace prod --ttl 30m
+
+# Preview what would be created, without creating it
+kubectl tessera --resource pods --namespace prod --dry-run
+```
+
+### Flags
+
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--verb` | `get,list,watch` | Comma-separated verbs to grant. |
 | `--resource` | *(required)* | Comma-separated resources to scope to (e.g. `pods,deployments`), or `'*'` for **all resources** (explicit opt-in; the SSAR pre-flight makes this admin-only, so it can't escalate you). |
-| `-n`, `--namespace` | *(current context)* | Namespace to scope to. Omit for a cluster-scoped grant. |
+| `-n`, `--namespace` | *(current context)* | Namespace to scope to — a namespaced `Role` + `RoleBinding`. |
+| `--cluster-scoped` | `false` | Scope over **cluster-scoped** resources (e.g. `nodes`, `clusterroles`) — mints a `ClusterRole` + `ClusterRoleBinding`. |
+| `-A`, `--all-namespaces` | `false` | Grant the scope in **every** namespace, including future ones (`ClusterRole` + `ClusterRoleBinding`). |
 | `--ttl` | `15m` | Token lifetime. The API server auto-revokes after this. |
 | `--resource-name` | *(none)* | Restrict the grant to named resource instances. |
 | `--api-group` | *(core)* | API group of the target resource(s). |
-| `--cluster` | *(current context)* | Cluster/context to mint against. |
 | `--exec` | *(default)* | Drop into an interactive subshell with the scoped kubeconfig; clean up RBAC on exit. |
 | `--print-kubeconfig` | | Print the kubeconfig to stdout (for agents/automation). Leaves RBAC objects for `gc`. |
 | `--dry-run` | | Show what would be created without creating it. |
 | `-o json` | | Machine-readable output. |
+
+Standard kubectl flags (`--context`, `--cluster`, `--kubeconfig`, `--as`, …) are inherited from
+cli-runtime and select *which* cluster/identity to mint against — note `--cluster` is kubectl's
+kubeconfig-cluster selector, **not** tessera's `--cluster-scoped`.
 
 `--exec` and `--print-kubeconfig` are **mutually exclusive** — one drives an interactive session
 that cleans up after itself, the other hands the kubeconfig to something else and relies on the

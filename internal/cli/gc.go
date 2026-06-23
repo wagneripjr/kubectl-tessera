@@ -14,8 +14,10 @@ import (
 
 func newGcCmd(cf *genericclioptions.ConfigFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:          "gc",
-		Short:        "Delete expired managed RBAC objects across namespaces",
+		Use:   "gc",
+		Short: "Delete expired managed RBAC objects across namespaces",
+		Example: "  # Sweep and delete expired/orphaned tessera RBAC objects (cron-safe)\n" +
+			"  kubectl tessera gc",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

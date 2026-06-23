@@ -16,8 +16,12 @@ import (
 func newLsCmd(cf *genericclioptions.ConfigFlags) *cobra.Command {
 	var outputFormat string
 	cmd := &cobra.Command{
-		Use:          "ls",
-		Short:        "List active tessera sessions",
+		Use:   "ls",
+		Short: "List active tessera sessions",
+		Example: "  # List active tessera sessions\n" +
+			"  kubectl tessera ls\n\n" +
+			"  # Machine-readable output\n" +
+			"  kubectl tessera ls -o json",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

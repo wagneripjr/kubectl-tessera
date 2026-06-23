@@ -323,7 +323,18 @@
     <div class="kicker">Usage</div>
     <h2>Scope it. Time&#8209;box it. <em>Walk away.</em></h2>
     <p class="sub">Defaults fail safe: <code style="font-family:var(--mono);color:var(--bronze-bright)">get,list,watch</code>,
-      namespaced, 15&#8209;minute TTL. You widen scope explicitly &#8212; never by accident.</p>
+      namespaced, 15&#8209;minute TTL. You widen scope explicitly &#8212; never by accident.
+      New here? Run <code style="font-family:var(--mono);color:var(--bronze-bright)">kubectl tessera</code> with no arguments for help and examples.</p>
+
+    <div class="cmd"><div class="lbl">the simplest start &#8212; read&#8209;only pods, current namespace</div>
+      <button class="copy" data-copy="kubectl tessera --resource pods">copy</button>
+<pre><span class="pmpt">$</span> kubectl tessera <span class="flag">--resource</span> pods   <span class="cmt"># interactive shell, get/list/watch, 15m TTL</span></pre></div>
+
+    <div class="cmd"><div class="lbl">ephemeral cluster&#8209;wide reader &#8212; every resource type</div>
+      <button class="copy" data-copy="export KUBECONFIG=&quot;$(kubectl tessera \&#10;  --resource '*' --all-namespaces \&#10;  --ttl 1h --print-kubeconfig)&quot;">copy</button>
+<pre><span class="pmpt">$</span> export KUBECONFIG="$(kubectl tessera \
+    <span class="flag">--resource</span> '*' <span class="flag">--all-namespaces</span> \
+    <span class="flag">--ttl</span> 1h <span class="flag">--print-kubeconfig</span>)"</pre></div>
 
     <div class="cmd"><div class="lbl">point an agent at prod, read&#8209;only, for an hour</div>
       <button class="copy" data-copy="export KUBECONFIG=&quot;$(kubectl tessera \&#10;  --verb get,list,watch \&#10;  --resource pods,deployments,events,replicasets \&#10;  --namespace prod --ttl 1h --print-kubeconfig)&quot;&#10;&#10;claude">copy</button>

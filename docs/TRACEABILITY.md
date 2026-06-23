@@ -27,6 +27,7 @@ behavior is unimplemented by design; see the project plan).
 | FR-017 | Multi-namespace (explicit list; one SA, Role+RoleBinding per ns) | ADR-008 | multi_namespace.feature | 1/1 GREEN | Done |
 | FR-018 | All-namespaces wildcard (`-A`; ClusterRole+ClusterRoleBinding) | ADR-013 | multi_namespace.feature | 2/2 GREEN | Done |
 | FR-019 | All-resources wildcard (`--resource '*'`; `{*,*}` rule) | ADR-014 | scope_enforcement.feature | 2/2 GREEN (e2e @FR-019: all-resources read + non-admin refused; unit scope/cli) | Done |
+| FR-020 | Help on bare invocation + usage examples | ADR-001 | unit-only (e2e N/A — no-cluster CLI dispatch) | 3/3 GREEN (unit `internal/cli/help_test.go`) | Done |
 | NFR-001 | No token leakage + 0600 | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | NFR-002 | Create-as-user, no impersonation | ADR-005 | BOUNDARIES + code review | review-only by design | Pending |
 | NFR-003 | Signed releases + SBOM | ADR-003 | release workflow | v0.1.1 GREEN: cosign bundle + per-archive SBOM; `verify-blob --bundle` OK | Done |

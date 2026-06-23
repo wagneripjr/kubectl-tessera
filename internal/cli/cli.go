@@ -46,10 +46,30 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 		Long: "kubectl-tessera mints an ephemeral, scope-narrowed, TTL-bound credential " +
 			"for the current cluster, running as the invoking user, with a SelfSubjectAccessReview " +
 			"pre-flight and automatic cleanup of the RBAC objects it creates.",
+		Example: `  # Read-only interactive shell on pods in the current namespace (default verbs get,list,watch)
+  kubectl tessera --resource pods
+
+  # Hand an AI agent a self-contained, auto-expiring read-only kubeconfig for prod
+  kubectl tessera --resource pods,deployments,events --namespace prod --ttl 1h --print-kubeconfig
+
+  # Ephemeral cluster-wide reader across every resource type (quote the wildcard)
+  kubectl tessera --resource '*' --all-namespaces --print-kubeconfig
+
+  # Scoped write for an incident: edit one named deployment in prod
+  kubectl tessera --verb get,list,update,patch --resource deployments --resource-name web --namespace prod --ttl 30m
+
+  # Preview what would be created without creating anything
+  kubectl tessera --resource pods --namespace prod --dry-run`,
+		Annotations: map[string]string{
+			cobra.CommandDisplayNameAnnotation: "kubectl tessera",
+		},
 		Version:       info.Version,
 		SilenceUsage:  true,
 		SilenceErrors: false,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && cmd.Flags().NFlag() == 0 {
+				return cmd.Help()
+			}
 			return o.run(cmd)
 		},
 	}

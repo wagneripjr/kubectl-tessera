@@ -57,3 +57,36 @@ effective expiry, kubeconfig path, created objects).
 
 - **Acceptance:** `-o json` output parses as JSON and contains the session fields.
 - **Traces to:** ADR-008 · unit tests + `distribution_cli.feature`.
+
+## FR-020: Help on bare invocation + usage examples
+
+Invoked with no arguments and no flags, `kubectl tessera` prints its help (usage, flags, and
+worked examples) to **stdout** and exits **0** — a discovery gesture, not a failed mint. This
+is the friendly first contact for new users and AI agents, who would otherwise hit
+`--resource is required`. Any flag or positional argument preserves the existing behavior:
+`kubectl tessera --resource pods` mints; `kubectl tessera -n prod` still fails the
+`--resource is required` pre-check; a stray positional argument is not swallowed into help.
+The root command and every subcommand (`version`, `gc`, `ls`) carry an `Example:` block of
+common, copy-pasteable use cases, and help renders the binary as `kubectl tessera` (via the
+Cobra display-name annotation), not `kubectl-tessera`.
+
+- **Acceptance:** `kubectl tessera` with no args exits 0 and its stdout contains a usage line,
+  an `Examples:` section, and the `--resource` flag; `kubectl tessera -n prod` still exits
+  non-zero with `--resource is required`; a stray positional argument yields a non-help error.
+- **Traces to:** ADR-001 (Cobra) · unit tests (`internal/cli/help_test.go`).
+
+## Bet
+
+_(For FR-020 — R-1 precommitted outcome.)_
+
+- **Expected outcome**: a first-time `kubectl tessera` (no args) returns actionable help with
+  ≥ 5 worked examples and exit 0 instead of an error, lowering time-to-first-success for new
+  users and AI agents — with **zero mint-path regression** (the `--resource is required`
+  assertion stays GREEN).
+- **Evidence method**: `internal/cli/help_test.go` GREEN (exit 0 + `Examples:` present + mint
+  path preserved) in `docs/.sdlc/execution-log.jsonl`; README Usage and the Pages site show the
+  same common-use-case examples.
+- **Owner**: Wagner Ignacio Pinto Junior
+- **Review date**: 2026-09-23
+- **Result**: _(pending — confirmed | rejected | inconclusive)_
+- **Decision**: _(pending — continue | revise | revert)_
