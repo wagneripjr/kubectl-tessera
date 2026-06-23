@@ -20,6 +20,9 @@ func TestValidate(t *testing.T) {
 		{name: "missing resource is rejected", opts: mintOptions{printKubeconfig: true}, wantErr: true},
 		{name: "print-kubeconfig and exec together are rejected", opts: mintOptions{resources: []string{"pods"}, printKubeconfig: true, exec: true}, wantErr: true},
 		{name: "print-kubeconfig with a resource is accepted", opts: mintOptions{resources: []string{"pods"}, printKubeconfig: true}, wantErr: false},
+		{name: "all-resources wildcard alone is accepted", opts: mintOptions{resources: []string{"*"}, printKubeconfig: true}, wantErr: false},
+		{name: "all-resources wildcard with a resource-name is rejected", opts: mintOptions{resources: []string{"*"}, resourceNames: []string{"foo"}, printKubeconfig: true}, wantErr: true},
+		{name: "all-resources wildcard with an api-group is rejected", opts: mintOptions{resources: []string{"*"}, apiGroup: "apps", printKubeconfig: true}, wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

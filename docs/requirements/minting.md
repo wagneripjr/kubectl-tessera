@@ -86,3 +86,38 @@ The effective expiry surfaced to the user is always the API server's returned ti
   and a floor warning is emitted to stderr; a TTL above the cluster maximum surfaces the
   returned (clamped) timestamp and emits a clamp warning.
 - **Traces to:** ADR-001 · `lifecycle_cleanup.feature` (#3, sub-minimum TTL floor).
+
+## FR-019: Explicit all-resources scope (`--resource '*'`)
+
+An operator may request **all resources** in one session by passing `--resource '*'`. This is an
+explicit, opt-in widening — never a default (NFR-006). The minted rule is
+`{apiGroups:["*"], resources:["*"], verbs:[…]}`; the namespacing flags decide Role vs ClusterRole
+exactly as for a named resource (default → namespaced `Role`; `-A` → all-namespaces ClusterRole;
+`--cluster-scoped` → cluster-wide ClusterRole). Verbs still default to `get,list,watch`, so the
+common form `--resource '*' --verb get,list,watch -A` is an ephemeral cluster-wide *reader*.
+
+- **SSAR gate is the boundary.** The pre-flight checks `*/*` (the canonical admin check), so a
+  non-admin operator is refused before anything is created — the escalation-prevention boundary
+  (NFR-002, ADR-005) holds with no special handling.
+- **Loud audit + warning.** A stderr warning records that the session grants all resources
+  (admin-equivalent for the chosen verbs).
+- **Rejections:** `*` mixed with other resources (`pods,*`); `*` with `--resource-name`; `*` with
+  `--api-group` (the wildcard already spans all groups).
+- **Acceptance:** an operator with the rights mints `get,list,watch` on `*` and the minted token
+  can `get` `pods`, `configmaps`, and `services` but cannot `delete` `pods`; a limited operator who
+  lacks `*/*` is refused with a non-zero exit and zero managed objects created.
+- **Traces to:** ADR-014, ADR-006 · `scope_enforcement.feature` (@FR-019).
+
+## Bet
+
+_(For FR-019 — R-1 precommitted outcome.)_
+
+- **Expected outcome**: `--resource '*' --verb get,list,watch -A` becomes the documented, recommended
+  way to grant an agent ephemeral cluster-wide read, with **zero boundary regression** — the
+  non-admin-refused `@FR-019` acceptance scenario stays GREEN.
+- **Evidence method**: `@FR-019` scenarios GREEN in `docs/.sdlc/execution-log.jsonl`; README Usage
+  documents the all-resources reader.
+- **Owner**: Wagner Ignacio Pinto Junior
+- **Review date**: 2026-09-23
+- **Result**: _(pending — confirmed | rejected | inconclusive)_
+- **Decision**: _(pending — continue | revise | revert)_

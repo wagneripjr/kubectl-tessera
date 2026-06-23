@@ -115,6 +115,10 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		_, _ = fmt.Fprintln(stderr, "tessera: warning: this session grants the requested scope across ALL namespaces (cluster-wide), including namespaces created later")
 	}
 
+	if o.isWildcardResource() {
+		_, _ = fmt.Fprintf(stderr, "tessera: warning: this session grants ALL resources (apiGroups=*, resources=*) for verbs [%s] — admin-equivalent for those verbs\n", strings.Join(o.verbs, ","))
+	}
+
 	var descNamespaces []string
 	switch {
 	case o.clusterScoped:
@@ -248,9 +252,21 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 	return nil
 }
 
+func (o *mintOptions) isWildcardResource() bool {
+	return len(o.resources) == 1 && o.resources[0] == "*"
+}
+
 func (o *mintOptions) validate() error {
 	if len(o.resources) == 0 {
 		return fmt.Errorf("--resource is required")
+	}
+	if o.isWildcardResource() {
+		if len(o.resourceNames) > 0 {
+			return fmt.Errorf("--resource '*' cannot be combined with --resource-name")
+		}
+		if o.apiGroup != "" {
+			return fmt.Errorf("--resource '*' cannot be combined with --api-group; the wildcard already spans all groups")
+		}
 	}
 	if o.printKubeconfig && o.exec {
 		return fmt.Errorf("--print-kubeconfig and --exec are mutually exclusive")

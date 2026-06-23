@@ -38,6 +38,16 @@ func Resolve(req Request, mapper meta.RESTMapper) (Resolution, error) {
 		return Resolution{}, fmt.Errorf("--namespace cannot be used with cluster-scoped resources; omit -n")
 	}
 
+	for _, r := range req.Resources {
+		if r == "*" {
+			if len(req.Resources) != 1 {
+				return Resolution{}, fmt.Errorf("wildcard '*' cannot be combined with other resources; request '*' on its own")
+			}
+			resolved := []ResolvedResource{{Resource: "*", Group: "*", Namespaced: !req.ClusterScoped}}
+			return Resolution{Resources: resolved, Rules: buildRules(resolved, req.Verbs, req.ResourceNames)}, nil
+		}
+	}
+
 	resolved := make([]ResolvedResource, 0, len(req.Resources))
 	for _, r := range req.Resources {
 		gvr, err := mapper.ResourceFor(schema.GroupVersionResource{Group: req.APIGroup, Resource: r})

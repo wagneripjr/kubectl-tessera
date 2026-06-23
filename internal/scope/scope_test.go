@@ -72,6 +72,18 @@ func TestResolveProducesScopedRules(t *testing.T) {
 			wantResources: []ResolvedResource{{Resource: "pods", Group: "", Namespaced: true}},
 			wantRules:     []PolicyRule{{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}, ResourceNames: []string{"foo"}}},
 		},
+		{
+			name:          "all-resources wildcard, namespaced (no RESTMapper lookup)",
+			req:           Request{Verbs: []string{"get", "list", "watch"}, Resources: []string{"*"}, Namespace: "prod"},
+			wantResources: []ResolvedResource{{Resource: "*", Group: "*", Namespaced: true}},
+			wantRules:     []PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get", "list", "watch"}}},
+		},
+		{
+			name:          "all-resources wildcard, cluster-scoped",
+			req:           Request{Verbs: []string{"*"}, Resources: []string{"*"}, ClusterScoped: true},
+			wantResources: []ResolvedResource{{Resource: "*", Group: "*", Namespaced: false}},
+			wantRules:     []PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}}},
+		},
 	}
 
 	for _, tc := range cases {
@@ -120,6 +132,11 @@ func TestResolveRejectsInconsistentScope(t *testing.T) {
 			name:        "no resources requested",
 			req:         Request{Verbs: []string{"get"}, Namespace: "prod"},
 			wantErrPart: "resource",
+		},
+		{
+			name:        "wildcard mixed with another resource",
+			req:         Request{Verbs: []string{"get"}, Resources: []string{"pods", "*"}, Namespace: "prod"},
+			wantErrPart: "wildcard",
 		},
 	}
 

@@ -71,7 +71,7 @@ kubectl tessera --resource pods [flags]
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--verb` | `get,list,watch` | Comma-separated verbs to grant. |
-| `--resource` | *(required)* | Comma-separated resources to scope to (e.g. `pods,deployments`). |
+| `--resource` | *(required)* | Comma-separated resources to scope to (e.g. `pods,deployments`), or `'*'` for **all resources** (explicit opt-in; the SSAR pre-flight makes this admin-only, so it can't escalate you). |
 | `-n`, `--namespace` | *(current context)* | Namespace to scope to. Omit for a cluster-scoped grant. |
 | `--ttl` | `15m` | Token lifetime. The API server auto-revokes after this. |
 | `--resource-name` | *(none)* | Restrict the grant to named resource instances. |
@@ -105,6 +105,18 @@ export KUBECONFIG="$(kubectl tessera \
   --resource pods,deployments,events,replicasets \
   --namespace prod --ttl 1h --print-kubeconfig)"
 claude   # read-only in prod, auto-expiring in 1h
+```
+
+For an agent that must **read across every resource type** rather than a fixed list, use the `'*'`
+wildcard (quote it so the shell doesn't glob-expand it). With the read-only default verbs and `-A`,
+this mints an ephemeral cluster-wide reader — and the SSAR pre-flight still refuses it unless you
+already hold cluster-wide read, so it can't escalate you:
+
+```bash
+export KUBECONFIG="$(kubectl tessera \
+  --resource '*' --verb get,list,watch \
+  --all-namespaces --ttl 1h --print-kubeconfig)"
+claude   # read everything, everywhere, read-only, for 1h
 ```
 
 Because `--print-kubeconfig` leaves the RBAC objects behind for the agent's lifetime, **something

@@ -26,6 +26,7 @@ behavior is unimplemented by design; see the project plan).
 | FR-016 | Clear errors (lacks-create; k8s<1.24) | ADR-001 | session_inventory.feature + unit | 1/1 GREEN (e2e @FR-016 missing-create); k8s<1.24 unit-only (CI kind ≥1.34) | Done |
 | FR-017 | Multi-namespace (explicit list; one SA, Role+RoleBinding per ns) | ADR-008 | multi_namespace.feature | 1/1 GREEN | Done |
 | FR-018 | All-namespaces wildcard (`-A`; ClusterRole+ClusterRoleBinding) | ADR-013 | multi_namespace.feature | 2/2 GREEN | Done |
+| FR-019 | All-resources wildcard (`--resource '*'`; `{*,*}` rule) | ADR-014 | scope_enforcement.feature | 2/2 GREEN (e2e @FR-019: all-resources read + non-admin refused; unit scope/cli) | Done |
 | NFR-001 | No token leakage + 0600 | ADR-001 | distribution_cli.feature | 1/1 GREEN | Done |
 | NFR-002 | Create-as-user, no impersonation | ADR-005 | BOUNDARIES + code review | review-only by design | Pending |
 | NFR-003 | Signed releases + SBOM | ADR-003 | release workflow | v0.1.1 GREEN: cosign bundle + per-archive SBOM; `verify-blob --bundle` OK | Done |
@@ -65,3 +66,4 @@ _New bugs go in `docs/bugs/BUG-NNN-slug.md` and add a row here._
 | ADR-011 | SSRR Incomplete coverage | Accepted | FR-013 |
 | ADR-012 | krew-release-bot for krew-index PR | Accepted | NFR-003 |
 | ADR-013 | All-namespaces wildcard via ClusterRoleBinding | Accepted | FR-018 |
+| ADR-014 | All-resources wildcard via a single `*/*` rule | Accepted | FR-019 |
