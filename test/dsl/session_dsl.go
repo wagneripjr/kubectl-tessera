@@ -410,14 +410,20 @@ func (s *SessionDSL) ThenKubeconfigFileRemoved() error {
 }
 
 func (s *SessionDSL) ThenManagedSessionRemoved(ctx context.Context, sessionID string) error {
-	exists, err := s.driver.SessionObjectsExist(ctx, sessionID)
-	if err != nil {
-		return err
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		exists, err := s.driver.SessionObjectsExist(ctx, sessionID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("expected managed session %q to be removed", sessionID)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
-	if exists {
-		return fmt.Errorf("expected managed session %q to be removed", sessionID)
-	}
-	return nil
 }
 
 func (s *SessionDSL) ThenManagedSessionRemains(ctx context.Context, sessionID string) error {

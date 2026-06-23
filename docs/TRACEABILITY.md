@@ -45,7 +45,7 @@ behavior is unimplemented by design; see the project plan).
 
 | Bug ID | Severity | Status | Related Req | Related ADR | Fix Commit |
 |--------|----------|--------|-------------|-------------|------------|
-| BUG-001 | Low | OPEN | FR-011, NFR-005 | — | — |
+| BUG-001 | Low | FIXED (2026-06-23) | FR-011, NFR-005 | — | poll for removal in e2e DSL |
 
 _New bugs go in `docs/bugs/BUG-NNN-slug.md` and add a row here._
 

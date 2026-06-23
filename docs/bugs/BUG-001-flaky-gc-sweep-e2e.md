@@ -1,6 +1,6 @@
 # BUG-001: Flaky E2E — gc sweep sometimes leaves an expired session
 
-**Status**: OPEN
+**Status**: FIXED (2026-06-23)
 **Severity**: Low
 **Found**: 2026-06-21
 
@@ -27,11 +27,14 @@ It is non-deterministic: the same commit passes on a re-run and on the
 
 ## Root Cause
 
-Not yet confirmed. Hypothesis: a timing/boundary race in the sweep's expiry decision —
-the scenario seeds `expired1` with a past `tessera.adustio.com/expires-at`, invokes the
-sweep, and asserts deletion. On a slower kind node (or near the `time.Now()` boundary, or
-with slower API-server propagation of the create before the sweep lists), the object is not
-yet visible/deleted when the assertion runs.
+Confirmed: the assertion, not the sweep. `gc` deletes the expired set with **foreground
+propagation** (it returns before the API server finishes removing the objects). The DSL step
+`ThenManagedSessionRemoved` (`test/dsl/session_dsl.go`) then read `SessionObjectsExist` **exactly
+once, synchronously**. On a slower/older kind node the single read races the still-propagating
+deletion and intermittently still sees `expired1`. Its sibling `ThenSessionObjectsGone` already
+polled against a deadline for the same reason — `ThenManagedSessionRemoved` simply never got the
+same treatment. `internal/gc` was correct the whole time (consistent with the symptom being
+node-version- and timing-dependent, never a code regression).
 
 ## Impact
 
@@ -41,10 +44,11 @@ next sweep.
 
 ## Fix
 
-Not yet applied. Likely directions (to confirm against a local kind cluster):
-- Assert deletion with a bounded poll/eventually rather than a single immediate check.
-- Ensure the seeded object is observed (read-after-write) before invoking the sweep.
-- Seed `expires-at` comfortably in the past (not near `now`).
+Applied (2026-06-23): `ThenManagedSessionRemoved` now polls `SessionObjectsExist` against a 5s
+deadline (200ms interval), returning as soon as the objects are gone and only failing if they
+persist past the deadline — identical to the existing `ThenSessionObjectsGone`. Test-infrastructure
+only; no production/`internal/gc` change. The seeded `expires-at` is already comfortably in the past
+(`time.Now().Add(-time.Hour)`), so the deletion-propagation poll is the complete fix.
 
 ## Test Gap
 
