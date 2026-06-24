@@ -30,6 +30,19 @@ Let goreleaser **generate and sign** the manifest, and use the free, maintainer-
 on tag. Validate the manifest with krew's `validate-krew-manifest` before release to avoid PR
 rejections.
 
+> **Amendment (2026-06-23, BUG-002).** Two corrections from first contact with the real tools:
+>
+> 1. **The bot cannot do the *first* submission.** krew maintainers require the initial
+>    `plugins/tessera.yaml` PR to be opened **manually** by the author and human-reviewed (CNCF
+>    CLA + naming + `validate-krew-manifest`). `krew-release-bot` only automates *subsequent*
+>    version-bump PRs after that first PR merges. The Decision above therefore applies to
+>    ongoing releases, not the bootstrap submission.
+> 2. **goreleaser does not generate the manifest.** The `krews` block was removed (it 404'd the
+>    release — BUG-002 — and the bot does not consume goreleaser's output). The single manifest
+>    source of truth is now **`.krew.yaml`** at the repo root, which the bot renders via
+>    `addURIAndSha`. Archive `name_template` carries the full tag (`{{ .Tag }}`) so the
+>    template's `{{ .TagName }}` matches asset names with no string manipulation.
+
 ## Consequences
 
 ### Positive
