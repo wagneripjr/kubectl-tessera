@@ -19,7 +19,6 @@ func executeRoot(t *testing.T, args ...string) (stdout string, err error) {
 
 func TestBareInvocationPrintsHelpAndExitsZero(t *testing.T) {
 	out, err := executeRoot(t)
-
 	if err != nil {
 		t.Fatalf("bare invocation must exit 0 (a discovery gesture, not a failed mint); got error: %v", err)
 	}
