@@ -54,13 +54,28 @@ Via krew (pending krew-index acceptance):
 kubectl krew install tessera
 ```
 
+No krew, no Go toolchain? Install the signed release binary with the script. It downloads the
+right archive for your OS/arch, checks its SHA-256 against the release `checksums.txt`, verifies
+the cosign signature when `cosign` is present, and drops `kubectl-tessera` on your PATH. Because
+this tool mints cluster credentials, **read the script before you run it**:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/wagneripjr/kubectl-tessera/master/install.sh
+less install.sh                 # inspect, then trust
+bash install.sh                 # installs to /usr/local/bin (falls back to ~/.local/bin)
+```
+
+Pin a version or pick the directory with `bash install.sh -v v0.1.2 -b ~/.local/bin`. For the
+impatient, the one-liner `curl -fsSL https://raw.githubusercontent.com/wagneripjr/kubectl-tessera/master/install.sh | bash`
+does the same — at the cost of piping remote code straight into a shell.
+
 Or directly with Go:
 
 ```bash
 go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest
 ```
 
-Either way, the binary is `kubectl-tessera`, invoked as `kubectl tessera`.
+Any of these gives you the `kubectl-tessera` binary, invoked as `kubectl tessera`.
 
 ## Usage
 

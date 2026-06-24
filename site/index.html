@@ -293,7 +293,7 @@
   <!-- INSTALL -->
   <section class="blk" id="install"><div class="wrap">
     <div class="kicker">Install</div>
-    <h2>Three ways to get the plugin</h2>
+    <h2>Four ways to get the plugin</h2>
     <p class="sub">Installed as <code style="font-family:var(--mono);color:var(--bronze-bright)">kubectl-tessera</code>
       on your <code style="font-family:var(--mono);color:var(--bronze-bright)">$PATH</code>, it&#8217;s invoked as
       <code style="font-family:var(--mono);color:var(--bronze-bright)">kubectl tessera</code>.</p>
@@ -309,7 +309,14 @@
         <button class="copy" data-copy="go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest">copy</button>
 <pre><span class="pmpt">$</span> go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest</pre></div>
 
-      <div class="istep"><b>C.</b> manual &#8212; download, extract, drop on PATH</div>
+      <div class="istep"><b>C.</b> install script &#8212; no krew, no Go; sha256&#8209;verified (cosign when present)</div>
+      <div class="cmd"><div class="lbl">linux / macOS &#8212; inspect, then run</div>
+        <button class="copy" data-copy="curl -fsSLO https://raw.githubusercontent.com/wagneripjr/kubectl-tessera/master/install.sh&#10;less install.sh&#10;bash install.sh">copy</button>
+<pre><span class="pmpt">$</span> curl -fsSLO https://raw.githubusercontent.com/wagneripjr/kubectl-tessera/master/install.sh
+<span class="pmpt">$</span> less install.sh   <span class="cmt"># it mints cluster creds &#8212; trust before you run</span>
+<span class="pmpt">$</span> bash install.sh   <span class="cmt"># &#8594; /usr/local/bin (or ~/.local/bin)</span></pre></div>
+
+      <div class="istep"><b>D.</b> manual &#8212; download, extract, drop on PATH</div>
       <div class="cmd"><div class="lbl">linux / macOS</div>
         <button class="copy" data-copy="tar -xzf kubectl-tessera_*_linux_amd64.tar.gz&#10;sudo install kubectl-tessera /usr/local/bin/&#10;kubectl tessera version">copy</button>
 <pre><span class="pmpt">$</span> tar -xzf kubectl-tessera_*_linux_amd64.tar.gz
