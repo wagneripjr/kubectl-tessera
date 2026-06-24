@@ -29,6 +29,7 @@ archives:
   - id: kubectl-tessera
     ids:
       - kubectl-tessera
+    name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -59,23 +60,6 @@ signs:
       - "--yes"
     artifacts: checksum
     output: true
-
-krews:
-  - name: tessera
-    ids:
-      - kubectl-tessera
-    homepage: "https://github.com/wagneripjr/kubectl-tessera"
-    description: |-
-      Mint short-lived, least-privilege kubeconfigs scoped to a single
-      ServiceAccount. kubectl-tessera creates a temporary identity, grants
-      exactly the RBAC you ask for, prints a ready-to-use kubeconfig, and
-      garbage-collects the identity when its lease expires — so you can hand
-      out narrowly scoped cluster access without sharing admin credentials.
-    short_description: "Mint short-lived, least-privilege scoped kubeconfigs"
-    # Generate the manifest only; the krew-index PR is owned by the
-    # krew-release-bot job (ADR-012). `auto` would try to push to an
-    # unset repository on a real tag → GET /repos// 404 → release fails.
-    skip_upload: true
 
 release:
   github:
