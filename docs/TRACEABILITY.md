@@ -1,8 +1,7 @@
 # Traceability Matrix — kubectl-tessera
 
 Bidirectional map: requirements ↔ ADRs ↔ acceptance specs ↔ tests. Spec coverage is
-`X/Y GREEN` once tests pass, or `0/Y TODO` while uncovered (scaffolding stage — all
-behavior is unimplemented by design; see the project plan).
+`X/Y GREEN` once tests pass, or `0/Y TODO` while uncovered.
 
 ## Requirements → Implementation
 

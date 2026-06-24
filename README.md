@@ -101,11 +101,11 @@ kubectl tessera --resource pods --namespace prod --dry-run
 | `-n`, `--namespace` | *(current context)* | Namespace to scope to — a namespaced `Role` + `RoleBinding`. |
 | `--cluster-scoped` | `false` | Scope over **cluster-scoped** resources (e.g. `nodes`, `clusterroles`) — mints a `ClusterRole` + `ClusterRoleBinding`. |
 | `-A`, `--all-namespaces` | `false` | Grant the scope in **every** namespace, including future ones (`ClusterRole` + `ClusterRoleBinding`). |
-| `--ttl` | `15m` | Token lifetime. The API server auto-revokes after this. |
+| `--ttl` | `15m` | Token lifetime (Go duration). The API server auto-revokes after this. Values below the cluster minimum (~10m) are floored and very long TTLs may be clamped — tessera warns on stderr when it adjusts. |
 | `--resource-name` | *(none)* | Restrict the grant to named resource instances. |
-| `--api-group` | *(core)* | API group of the target resource(s). |
+| `--api-group` | *(inferred)* | API group of the target resource(s); needed only to disambiguate a resource that exists in multiple groups. |
 | `--exec` | *(default)* | Drop into an interactive subshell with the scoped kubeconfig; clean up RBAC on exit. |
-| `--print-kubeconfig` | | Print the kubeconfig to stdout (for agents/automation). Leaves RBAC objects for `gc`. |
+| `--print-kubeconfig` | | Print the kubeconfig **path** to stdout (for agents/automation). Leaves RBAC objects for `gc`. |
 | `--dry-run` | | Show what would be created without creating it. |
 | `-o json` | | Machine-readable output. |
 
@@ -121,7 +121,7 @@ sweeper.
 
 | Command | Purpose |
 |---------|---------|
-| `tessera gc` | Sweep and delete expired/orphaned tessera RBAC objects by label. |
+| `tessera gc` | Sweep and delete expired/orphaned tessera-managed RBAC objects. |
 | `tessera ls` | List active tessera-minted sessions and their RBAC objects. |
 
 ## Claude Code integration
@@ -161,19 +161,14 @@ Three independent layers, so a failure in one doesn't strand objects forever:
 1. **Token TTL (API-server enforced).** The bound token is requested with `--ttl`; the API server
    stops honoring it after that, regardless of what happens to the client. This is the one layer you
    can't bypass.
-2. **`--exec` foreground signal trap.** In interactive mode, tessera traps SIGINT/SIGTERM and
-   deletes the RBAC objects it created when the subshell exits cleanly. This is the fast path — the
-   objects are gone seconds after you `exit`.
+2. **`--exec` foreground cleanup.** In interactive mode, tessera watches for SIGINT/SIGTERM and
+   deletes the RBAC objects it created whenever the subshell exits (anything short of `SIGKILL`).
+   This is the fast path — the objects are gone seconds after you `exit`.
 3. **`tessera gc` label sweep.** Required for `--print-kubeconfig`, and the backstop for everything
    else. A `SIGKILL` bypasses the signal trap entirely (you can't trap `SIGKILL`), so the Role and
-   binding would otherwise linger; `gc` finds them by their `tessera.adustio.com/*` labels and
-   reclaims them. Run it from cron, a CI step, or the bundled in-cluster CronJob.
-
-## Status
-
-Early, pre-1.0, scaffolding stage. The CLI surface and label schema documented here are the target;
-expect the implementation to lag the docs while the walking skeleton and ATDD harness come together.
-Don't depend on it for anything that matters yet.
+   binding would otherwise linger; `gc` finds them by the `app.kubernetes.io/managed-by=kubectl-tessera`
+   label (reading expiry from the `tessera.adustio.com/expires-at` annotation) and reclaims them. Run
+   it from cron, a CI step, or the bundled in-cluster CronJob.
 
 ## License
 
