@@ -1,6 +1,6 @@
 # BUG-002: Release workflow always fails — goreleaser krew block 404s on empty index repo
 
-**Status**: OPEN
+**Status**: FIXED (2026-06-23)
 **Severity**: Medium
 **Found**: 2026-06-23
 
@@ -59,10 +59,15 @@ Applied (2026-06-23):
    `kubectl-tessera_v0.1.2_linux_amd64.tar.gz`) so the `.krew.yaml` `addURIAndSha` URL — whose
    inner render exposes only `{{ .TagName }}` and no string functions — matches the asset name
    with zero manipulation.
-4. Added `continue-on-error: true` to the `krew` job: until tessera is accepted into krew-index,
-   the bot (which only *updates* existing plugins) fails by design and must not redden the run.
+4. Gated the `krew` job off (`if: false`) until tessera is accepted into krew-index. (Initially
+   `continue-on-error: true`, but the v0.1.2 run showed the bot *does* open a first PR — which
+   krew maintainers auto-close, krew-index#5917 — so gating it off avoids filing an auto-closed
+   PR on every tag.)
 
-Verified by a green `v0.1.2` Release run.
+Verified: the `v0.1.2` Release run is green end-to-end (run 28069308953, `GoReleaser: success`)
+— the first non-failing release in the project's history. The rendered manifest passed
+krew-index's own `Validate plugin manifests` CI and a local `validate-krew-manifest` (all 6
+platforms install fine) + `kubectl krew install --manifest --archive` smoke test.
 
 ## Test Gap
 

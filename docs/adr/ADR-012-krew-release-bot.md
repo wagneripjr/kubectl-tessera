@@ -32,11 +32,14 @@ rejections.
 
 > **Amendment (2026-06-23, BUG-002).** Two corrections from first contact with the real tools:
 >
-> 1. **The bot cannot do the *first* submission.** krew maintainers require the initial
->    `plugins/tessera.yaml` PR to be opened **manually** by the author and human-reviewed (CNCF
->    CLA + naming + `validate-krew-manifest`). `krew-release-bot` only automates *subsequent*
->    version-bump PRs after that first PR merges. The Decision above therefore applies to
->    ongoing releases, not the bootstrap submission.
+> 1. **The *first* submission must be a manual PR.** The bot will mechanically open it (it did,
+>    on the v0.1.2 tag: krew-index#5917, with `Validate plugin manifests` + `EasyCLA` both green),
+>    but krew maintainers **auto-close a bot-authored first submission** — you cannot push fixes in
+>    response to review on a bot PR (per @ahmetb's `/close /kind new-plugin` bot on #5917). So the
+>    author opens the initial `plugins/tessera.yaml` PR manually; `krew-release-bot` only automates
+>    *subsequent* version-bump PRs after that first PR merges. The Decision above therefore applies
+>    to ongoing releases, not the bootstrap submission. Until acceptance, the release workflow's
+>    `krew` job is gated off (`if: false`) so each tag does not file another auto-closed PR.
 > 2. **goreleaser does not generate the manifest.** The `krews` block was removed (it 404'd the
 >    release — BUG-002 — and the bot does not consume goreleaser's output). The single manifest
 >    source of truth is now **`.krew.yaml`** at the repo root, which the bot renders via

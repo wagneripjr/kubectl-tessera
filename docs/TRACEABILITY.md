@@ -47,7 +47,7 @@ behavior is unimplemented by design; see the project plan).
 | Bug ID | Severity | Status | Related Req | Related ADR | Fix Commit |
 |--------|----------|--------|-------------|-------------|------------|
 | BUG-001 | Low | FIXED (2026-06-23) | FR-011, NFR-005 | — | poll for removal in e2e DSL |
-| BUG-002 | Medium | OPEN | NFR-003, NFR-004 | ADR-003, ADR-012 | drop goreleaser krews block; add .krew.yaml |
+| BUG-002 | Medium | FIXED (2026-06-23) | NFR-003, NFR-004 | ADR-003, ADR-012 | 75f456a (drop krews block; add .krew.yaml) — green run 28069308953 |
 
 _New bugs go in `docs/bugs/BUG-NNN-slug.md` and add a row here._
 
