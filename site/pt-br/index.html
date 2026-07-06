@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>kubectl-tessera — credenciais Kubernetes efêmeras e de escopo reduzido</title>
+<meta name="description" content="Um plugin do kubectl que emite credenciais Kubernetes efêmeras, de escopo reduzido e com TTL — como o usuário que o invoca, com um gate de autorização prévio e limpeza automática." />
+<meta property="og:title" content="kubectl-tessera" />
+<meta property="og:description" content="Dê ao seu agente uma chave que expira. Kubeconfigs efêmeros, de privilégio mínimo e autolimpantes." />
+<meta property="og:type" content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/tessera.css" />
+<link rel="alternate" hreflang="en" href="https://wagneripjr.github.io/kubectl-tessera/" />
+<link rel="alternate" hreflang="pt-BR" href="https://wagneripjr.github.io/kubectl-tessera/pt-br/" />
+<link rel="alternate" hreflang="x-default" href="https://wagneripjr.github.io/kubectl-tessera/" />
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="glyph"><i></i><i></i><i></i><i></i></span>kubectl&#8209;tessera</a>
+    <nav>
+      <a href="#download" class="hide-sm">Download</a>
+      <a href="#install" class="hide-sm">Instalar</a>
+      <a href="#usage" class="hide-sm">Uso</a>
+      <a href="#flags" class="hide-sm">Flags</a>
+      <span class="lang"><a href="../">EN</a> &#183; <span class="active">PT</span></span>
+      <a class="ghub" href="https://github.com/wagneripjr/kubectl-tessera" target="_blank" rel="noopener">GitHub &#8599;</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <!-- HERO -->
+  <section class="hero"><div class="wrap">
+    <div class="eyebrow rise">plugin do kubectl &#183; Apache&#8209;2.0 &#183; Go</div>
+    <h1 class="rise" style="animation-delay:.05s">Dê ao seu agente<br>uma chave que <em>expira.</em></h1>
+    <p class="lede rise" style="animation-delay:.12s">
+      <b>kubectl&#8209;tessera</b> emite uma credencial efêmera, de escopo reduzido e com TTL para o cluster
+      atual &#8212; rodando como <em>você</em>, protegida por uma verificação de autorização prévia, e limpa automaticamente.
+    </p>
+    <p class="etymtag rise" style="animation-delay:.18s">
+      <b>tessera</b> &#8212; um símbolo romano de acesso concedido, talhado para conceder exatamente a entrada
+      para a qual foi feito, e então gasto. Isto emite o equivalente moderno: um kubeconfig confinado aos
+      verbos e recursos que você pedir, que se dissolve quando seu tempo acaba.
+    </p>
+    <div class="cta rise" style="animation-delay:.24s">
+      <a class="btn primary" href="#download">Baixar a mais recente <span class="arr">&#8594;</span></a>
+      <a class="btn ghost" href="#install">Instalar</a>
+      <a class="btn ghost" href="https://github.com/wagneripjr/kubectl-tessera" target="_blank" rel="noopener">Código&#8209;fonte &#8599;</a>
+    </div>
+
+    <div class="term rise" style="animation-delay:.32s" aria-hidden="true">
+      <div class="bar"><span class="dot a"></span><span class="dot"></span><span class="dot"></span>
+        <span class="name">~ &#8212; kubectl tessera</span></div>
+<pre><span class="cmt"># uma janela somente-leitura de 1 hora para um agente em produção</span>
+<span class="pmpt">$</span> export KUBECONFIG="$(kubectl tessera \
+    <span class="flag">--verb</span> get,list,watch \
+    <span class="flag">--resource</span> pods,deployments,events \
+    <span class="flag">--namespace</span> prod <span class="flag">--ttl</span> 1h <span class="flag">--print-kubeconfig</span>)"
+<span class="path">/run/user/1000/tessera/9f3a1c0b.kubeconfig</span>
+<span class="pmpt">$</span> claude   <span class="cmt"># somente-leitura em produção, expirando automaticamente em 1h</span>
+<span class="ok">&#10003;</span> sessão emitida &#183; escopo get,list,watch &#183; expira 14:32:07Z</pre>
+    </div>
+  </div></section>
+
+  <!-- CAVEAT / TRUST MODEL -->
+  <section class="blk" id="trust"><div class="wrap">
+    <div class="kicker">Leia isto primeiro</div>
+    <h2>O que esta ferramenta <em>realmente</em> te dá</h2>
+    <p class="sub">O token emitido é <b>sempre</b> restrito &#8212; quem quer que o use fica confinado ao escopo
+      que você pediu. O que muda é a garantia sobre <i>seu próprio</i> privilégio.</p>
+    <div class="trust">
+      <div class="card good"><div class="corner"></div>
+        <span class="tag">operador não&#8209;admin</span>
+        <h3>Uma fronteira de segurança real.</h3>
+        <p>A prevenção de escalonamento do RBAC do Kubernetes significa que você fisicamente não consegue
+          emitir um token com mais poder do que você já possui &#8212; o API server rejeita vincular a uma
+          role cujas regras você não possui. A fronteira é imposta pelo cluster, não apenas por nós.</p>
+      </div>
+      <div class="card warn"><div class="corner"></div>
+        <span class="tag">operador cluster&#8209;admin</span>
+        <h3>Um limitador de acidentes, não uma contenção.</h3>
+        <p>Se você já possui tudo, a prevenção de escalonamento é vazia &#8212; a ferramenta não pode te
+          impedir de exceder o escopo. Ainda é uma proteção eficaz de raio de explosão para um agente, mas
+          a barreira real contra operações destrutivas é a <b>política de admissão</b> (ValidatingAdmissionPolicy / Kyverno).</p>
+      </div>
+    </div>
+    <p class="honest">Sendo direto: tessera é primariamente um <b>limitador de acidentes para o agente</b>, e
+      uma fronteira de segurança real apenas para operadores não&#8209;admin. Ela não contém &#8212; e não pode conter &#8212; um admin malicioso.</p>
+  </div></section>
+
+  <!-- DOWNLOAD -->
+  <section class="blk" id="download"><div class="wrap">
+    <div class="kicker">Releases</div>
+    <div class="dlhead">
+      <h2>Baixe a build <em>mais recente</em></h2>
+      <span class="verbadge" id="verbadge">mais recente&nbsp;&#183;&nbsp;<b id="vertag">verificando&#8230;</b></span>
+    </div>
+    <p class="sub">Assinado (cosign keyless), com checksum, e acompanhado de um SBOM pelo GoReleaser, para
+      Linux, macOS e Windows em amd64 / arm64. Escolha sua plataforma &#8212; o resto está na
+      <a href="https://github.com/wagneripjr/kubectl-tessera/releases/latest" target="_blank" rel="noopener" style="color:var(--bronze);text-decoration:underline">página de releases</a>.</p>
+
+    <div id="dlgrid" aria-live="polite"></div>
+
+    <div id="dlfallback">
+      <p style="margin:0 0 10px;color:#bdb8ac">Ainda não há release publicado, ou a API do GitHub está
+        inacessível. Enquanto o primeiro release não sai, você pode compilar a partir do código&#8209;fonte:</p>
+      <div class="cmd"><div class="lbl">compilar a partir do código&#8209;fonte</div>
+        <button class="copy" data-copy="go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest">copy</button>
+<pre><span class="pmpt">$</span> go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest</pre></div>
+      <p style="margin:6px 0 0;font-family:var(--mono);font-size:13px;color:var(--faint)">
+        Ou acompanhe a <a href="https://github.com/wagneripjr/kubectl-tessera/releases" target="_blank" rel="noopener" style="color:var(--bronze);text-decoration:underline">página de releases &#8599;</a>.</p>
+    </div>
+    <p class="dlnote">Verifique os checksums contra <code>checksums.txt</code> e a assinatura cosign antes
+      de confiar em qualquer binário que emite credenciais.</p>
+  </div></section>
+
+  <!-- INSTALL -->
+  <section class="blk" id="install"><div class="wrap">
+    <div class="kicker">Instalar</div>
+    <h2>Quatro formas de obter o plugin</h2>
+    <p class="sub">Instalado como <code style="font-family:var(--mono);color:var(--bronze-bright)">kubectl-tessera</code>
+      no seu <code style="font-family:var(--mono);color:var(--bronze-bright)">$PATH</code>, é invocado como
+      <code style="font-family:var(--mono);color:var(--bronze-bright)">kubectl tessera</code>.</p>
+
+    <div class="imethods">
+      <div class="istep"><b>A.</b> krew &#8212; assim que for aceito no índice central</div>
+      <div class="cmd"><div class="lbl">kubectl krew</div>
+        <button class="copy" data-copy="kubectl krew install tessera">copy</button>
+<pre><span class="pmpt">$</span> kubectl krew install tessera   <span class="cmt"># aguardando aceitação no krew-index</span></pre></div>
+
+      <div class="istep"><b>B.</b> go install &#8212; sempre disponível</div>
+      <div class="cmd"><div class="lbl">go &#8805; 1.24</div>
+        <button class="copy" data-copy="go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest">copy</button>
+<pre><span class="pmpt">$</span> go install github.com/wagneripjr/kubectl-tessera/cmd/kubectl-tessera@latest</pre></div>
+
+      <div class="istep"><b>C.</b> script de instalação &#8212; sem krew, sem Go; verificado por sha256 (cosign quando presente)</div>
+      <div class="cmd"><div class="lbl">linux / macOS &#8212; inspecione, depois execute</div>
+        <button class="copy" data-copy="curl -fsSLO https://raw.githubusercontent.com/wagneripjr/kubectl-tessera/master/install.sh&#10;less install.sh&#10;bash install.sh">copy</button>
+<pre><span class="pmpt">$</span> curl -fsSLO https://raw.githubusercontent.com/wagneripjr/kubectl-tessera/master/install.sh
+<span class="pmpt">$</span> less install.sh   <span class="cmt"># ele emite credenciais do cluster &#8212; confira antes de rodar</span>
+<span class="pmpt">$</span> bash install.sh   <span class="cmt"># &#8594; /usr/local/bin (ou ~/.local/bin)</span></pre></div>
+
+      <div class="istep"><b>D.</b> manual &#8212; baixe, extraia, coloque no PATH</div>
+      <div class="cmd"><div class="lbl">linux / macOS</div>
+        <button class="copy" data-copy="tar -xzf kubectl-tessera_*_linux_amd64.tar.gz&#10;sudo install kubectl-tessera /usr/local/bin/&#10;kubectl tessera version">copy</button>
+<pre><span class="pmpt">$</span> tar -xzf kubectl-tessera_*_linux_amd64.tar.gz
+<span class="pmpt">$</span> sudo install kubectl-tessera /usr/local/bin/
+<span class="pmpt">$</span> kubectl tessera version</pre></div>
+    </div>
+  </div></section>
+
+  <!-- USAGE -->
+  <section class="blk" id="usage"><div class="wrap">
+    <div class="kicker">Uso</div>
+    <h2>Delimite o escopo. Coloque um prazo. <em>Vá embora.</em></h2>
+    <p class="sub">Padrões falham em segurança: <code style="font-family:var(--mono);color:var(--bronze-bright)">get,list,watch</code>,
+      com namespace, TTL de 15&#8209;minutos. Você amplia o escopo explicitamente &#8212; nunca por acidente.
+      Novo por aqui? Rode <code style="font-family:var(--mono);color:var(--bronze-bright)">kubectl tessera</code> sem argumentos para ver a ajuda e exemplos.</p>
+
+    <div class="cmd"><div class="lbl">o início mais simples &#8212; pods somente&#8209;leitura, namespace atual</div>
+      <button class="copy" data-copy="kubectl tessera --resource pods">copy</button>
+<pre><span class="pmpt">$</span> kubectl tessera <span class="flag">--resource</span> pods   <span class="cmt"># shell interativo, get/list/watch, TTL de 15m</span></pre></div>
+
+    <div class="cmd"><div class="lbl">leitor efêmero de todo o cluster &#8212; todo tipo de recurso</div>
+      <button class="copy" data-copy="export KUBECONFIG=&quot;$(kubectl tessera \&#10;  --resource '*' --all-namespaces \&#10;  --ttl 1h --print-kubeconfig)&quot;">copy</button>
+<pre><span class="pmpt">$</span> export KUBECONFIG="$(kubectl tessera \
+    <span class="flag">--resource</span> '*' <span class="flag">--all-namespaces</span> \
+    <span class="flag">--ttl</span> 1h <span class="flag">--print-kubeconfig</span>)"</pre></div>
+
+    <div class="cmd"><div class="lbl">aponte um agente para produção, somente&#8209;leitura, por uma hora</div>
+      <button class="copy" data-copy="export KUBECONFIG=&quot;$(kubectl tessera \&#10;  --verb get,list,watch \&#10;  --resource pods,deployments,events,replicasets \&#10;  --namespace prod --ttl 1h --print-kubeconfig)&quot;&#10;&#10;claude">copy</button>
+<pre><span class="pmpt">$</span> export KUBECONFIG="$(kubectl tessera \
+    <span class="flag">--verb</span> get,list,watch \
+    <span class="flag">--resource</span> pods,deployments,events,replicasets \
+    <span class="flag">--namespace</span> prod <span class="flag">--ttl</span> 1h <span class="flag">--print-kubeconfig</span>)"
+
+<span class="pmpt">$</span> claude   <span class="cmt"># somente-leitura em produção, expirando automaticamente em 1h</span></pre></div>
+
+    <div class="cmd"><div class="lbl">incidente com escrita restrita &#8212; amplie os verbos, encurte o TTL, fixe o objeto</div>
+      <button class="copy" data-copy="export KUBECONFIG=&quot;$(kubectl tessera \&#10;  --verb get,list,watch,patch,delete \&#10;  --resource pods --namespace prod \&#10;  --resource-name stuck-pod-abc123 --ttl 20m --print-kubeconfig)&quot;">copy</button>
+<pre><span class="pmpt">$</span> export KUBECONFIG="$(kubectl tessera \
+    <span class="flag">--verb</span> get,list,watch,patch,delete \
+    <span class="flag">--resource</span> pods <span class="flag">--namespace</span> prod \
+    <span class="flag">--resource-name</span> stuck-pod-abc123 <span class="flag">--ttl</span> 20m <span class="flag">--print-kubeconfig</span>)"</pre></div>
+
+    <div class="cmd"><div class="lbl">veja antes de emitir &#8212; nada é criado</div>
+      <button class="copy" data-copy="kubectl tessera --resource pods --namespace prod --dry-run">copy</button>
+<pre><span class="pmpt">$</span> kubectl tessera <span class="flag">--resource</span> pods <span class="flag">--namespace</span> prod <span class="flag">--dry-run</span>   <span class="cmt"># mostra a Role/RoleBinding que seriam criadas</span></pre></div>
+
+    <div class="cmd"><div class="lbl">veja o que está ativo &#8212; para humanos ou agentes</div>
+      <button class="copy" data-copy="kubectl tessera ls&#10;kubectl tessera ls -o json">copy</button>
+<pre><span class="pmpt">$</span> kubectl tessera ls   <span class="cmt"># session-id, owner, escopo, expires-at &#8212; de cada sessão ativa</span>
+<span class="pmpt">$</span> kubectl tessera ls <span class="flag">-o json</span>   <span class="cmt"># forma programável</span></pre></div>
+
+    <p class="dlnote">Usando <code>--print-kubeconfig</code>? Isso deixa os objetos do RBAC para o coletor
+      &#8212; confira o que ainda está ativo com <code>kubectl tessera ls</code>,
+      depois garanta que <code>kubectl tessera gc</code>
+      (ou o CronJob dentro do cluster) rode.</p>
+  </div></section>
+
+  <!-- HOW -->
+  <section class="blk" id="how"><div class="wrap">
+    <div class="kicker">Como se mantém seguro</div>
+    <h2>Privilégio mínimo, por construção</h2>
+    <div class="tiles">
+      <div class="tile"><div class="n">01</div><h4>Gate prévio</h4>
+        <p>Cada regra pedida é verificada com um <code>SelfSubjectAccessReview</code>. Peça mais do que
+          você possui e ele aborta &#8212; imprimindo uma tabela de permitido/negado &#8212; <b>antes de criar qualquer coisa</b>.</p></div>
+      <div class="tile"><div class="n">02</div><h4>Emitido como você</h4>
+        <p>Os objetos do RBAC são criados com <i>suas</i> credenciais, nunca com um contexto privilegiado
+          ou impersonation. É isso que torna a fronteira não&#8209;admin real.</p></div>
+      <div class="tile"><div class="n">03</div><h4>Limpeza em três camadas</h4>
+        <p>O token expira sozinho, o shell interativo intercepta sua saída, e <code>tessera gc</code> varre
+          quaisquer órfãos por label. <code>tessera ls</code> mostra o que ainda está ativo. Nada fica para trás.</p></div>
+    </div>
+  </div></section>
+
+  <!-- FLAGS -->
+  <section class="blk" id="flags"><div class="wrap">
+    <div class="kicker">Referência</div>
+    <h2>Cada <em>flag</em>, de relance</h2>
+    <p class="sub">Flags padrão do kubectl (<code style="font-family:var(--mono);color:var(--bronze-bright)">--context</code>,
+      <code style="font-family:var(--mono);color:var(--bronze-bright)">--kubeconfig</code>, &#8230;) são herdadas do
+      cli&#8209;runtime e selecionam <i>qual</i> cluster/identidade usar para emitir.</p>
+    <div class="flagtable-wrap">
+      <table class="flagtable">
+        <thead><tr><th>Flag</th><th>Padrão</th><th>Significado</th></tr></thead>
+        <tbody>
+          <tr><td><code>--verb</code></td><td><code>get,list,watch</code></td><td>Verbos a conceder, separados por vírgula.</td></tr>
+          <tr><td><code>--resource</code></td><td><i>obrigatório</i></td><td>Recursos a delimitar, separados por vírgula (ex. <code>pods,deployments</code>), ou <code>'*'</code> para todos os recursos &#8212; o gate SSAR prévio torna isso exclusivo para admins, então não pode te dar mais privilégio.</td></tr>
+          <tr><td><code>-n</code>, <code>--namespace</code></td><td><i>contexto atual</i></td><td>Namespace a delimitar &#8212; um <code>Role</code> + <code>RoleBinding</code> com namespace.</td></tr>
+          <tr><td><code>--cluster-scoped</code></td><td><code>false</code></td><td>Delimita sobre recursos de escopo de cluster (ex. <code>nodes</code>, <code>clusterroles</code>) &#8212; emite um <code>ClusterRole</code> + <code>ClusterRoleBinding</code>.</td></tr>
+          <tr><td><code>-A</code>, <code>--all-namespaces</code></td><td><code>false</code></td><td>Concede o escopo em todo namespace, incluindo os futuros.</td></tr>
+          <tr><td><code>--ttl</code></td><td><code>15m</code></td><td>Tempo de vida do token. Valores abaixo do mínimo do cluster são elevados ao piso e TTLs muito longos podem ser reduzidos &#8212; tessera avisa no stderr quando ajusta.</td></tr>
+          <tr><td><code>--resource-name</code></td><td><i>nenhum</i></td><td>Restringe a concessão a instâncias nomeadas do recurso.</td></tr>
+          <tr><td><code>--api-group</code></td><td><i>inferido</i></td><td>Grupo de API do(s) recurso(s) alvo; necessário só para desambiguar.</td></tr>
+          <tr><td><code>--exec</code></td><td><i>padrão</i></td><td>Entra em um subshell interativo com o kubeconfig delimitado; limpa o RBAC ao sair.</td></tr>
+          <tr><td><code>--print-kubeconfig</code></td><td></td><td>Imprime o caminho do kubeconfig no stdout. Deixa os objetos do RBAC para o <code>gc</code>.</td></tr>
+          <tr><td><code>--dry-run</code></td><td></td><td>Mostra o que seria criado, sem criar.</td></tr>
+          <tr><td><code>-o json</code></td><td></td><td>Saída legível por máquina.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div></section>
+</main>
+
+<footer><div class="wrap"><div class="grid">
+  <div>
+    <a class="brand" href="#top" style="font-size:15px"><span class="glyph"><i></i><i></i><i></i><i></i></span>kubectl&#8209;tessera</a>
+    <p class="fine" style="margin-top:14px"><b>Apache&#8209;2.0.</b> Uma ferramenta de emissão de credenciais
+      &#8212; uma fronteira real apenas para operadores não&#8209;admin, um limitador de acidentes para todos os
+      demais. Não afiliado ao projeto Kubernetes.</p>
+  </div>
+  <div class="cols">
+    <div><h5>Projeto</h5>
+      <a href="https://github.com/wagneripjr/kubectl-tessera" target="_blank" rel="noopener">Repositório &#8599;</a>
+      <a href="https://github.com/wagneripjr/kubectl-tessera/releases" target="_blank" rel="noopener">Releases &#8599;</a>
+      <a href="https://github.com/wagneripjr/kubectl-tessera/blob/master/CHANGELOG.md" target="_blank" rel="noopener">Changelog &#8599;</a>
+    </div>
+    <div><h5>Docs</h5>
+      <a href="https://github.com/wagneripjr/kubectl-tessera#readme" target="_blank" rel="noopener">README &#8599;</a>
+      <a href="https://github.com/wagneripjr/kubectl-tessera/blob/master/SECURITY.md" target="_blank" rel="noopener">Segurança e modelo de confiança &#8599;</a>
+      <a href="https://github.com/wagneripjr/kubectl-tessera/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">Como contribuir &#8599;</a>
+    </div>
+    <div><h5>Obter</h5>
+      <a href="#download">Download</a><a href="#install">Instalar</a><a href="#usage">Uso</a>
+    </div>
+  </div>
+</div></div></footer>
+
+<script src="../assets/tessera.js"></script>
+</body>
+</html>

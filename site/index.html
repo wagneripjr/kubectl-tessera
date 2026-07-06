@@ -11,184 +11,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-<style>
-  :root{
-    --ink:#0a0c0d; --ink-2:#0f1314; --panel:#12181a; --panel-2:#161d1f;
-    --text:#e9e4d8; --muted:#939a93; --faint:#5c645f;
-    --bronze:#d8a657; --bronze-bright:#f1c47b; --bronze-deep:#8a6a33;
-    --allow:#9ccf8a; --deny:#e0876f;
-    --line:rgba(216,166,87,.16); --line-soft:rgba(233,228,216,.08);
-    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-    --sans:"IBM Plex Sans",system-ui,sans-serif;
-    --serif:"Fraunces",Georgia,serif;
-    --maxw:1080px;
-  }
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{
-    margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);
-    font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;
-    overflow-x:hidden;
-  }
-  /* tessera mosaic texture + bronze glow */
-  body::before{
-    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
-    background-image:
-      linear-gradient(var(--line-soft) 1px,transparent 1px),
-      linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);
-    background-size:34px 34px;
-    mask-image:radial-gradient(120% 80% at 50% -10%,#000 30%,transparent 75%);
-    opacity:.6;
-  }
-  body::after{
-    content:"";position:fixed;inset:0 0 auto 0;height:70vh;z-index:0;pointer-events:none;
-    background:
-      radial-gradient(60% 55% at 70% -8%,rgba(216,166,87,.16),transparent 60%),
-      radial-gradient(50% 50% at 12% 0%,rgba(216,166,87,.06),transparent 55%);
-  }
-  .wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 24px}
-  a{color:inherit;text-decoration:none}
-  ::selection{background:var(--bronze);color:#1a1205}
-
-  /* nav */
-  header.nav{position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);
-    background:linear-gradient(var(--ink),rgba(10,12,13,.72));border-bottom:1px solid var(--line-soft)}
-  .nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
-  .brand{font-family:var(--mono);font-weight:700;letter-spacing:.02em;display:flex;gap:10px;align-items:center}
-  .brand .glyph{width:18px;height:18px;display:inline-grid;grid-template:repeat(2,1fr)/repeat(2,1fr);gap:2px}
-  .brand .glyph i{background:var(--bronze-deep);border-radius:1px}
-  .brand .glyph i:first-child{background:var(--bronze)}
-  .brand .glyph i:last-child{background:transparent;border:1px dashed var(--bronze-deep)}
-  .nav nav{display:flex;gap:26px;align-items:center;font-size:14px;font-family:var(--mono)}
-  .nav nav a{color:var(--muted);transition:color .2s}
-  .nav nav a:hover{color:var(--bronze-bright)}
-  .nav .ghub{color:var(--text);border:1px solid var(--line);padding:7px 12px;border-radius:7px}
-  .nav .ghub:hover{border-color:var(--bronze);background:rgba(216,166,87,.06)}
-  @media(max-width:680px){.nav nav a.hide-sm{display:none}}
-
-  /* hero */
-  .hero{padding:88px 0 56px}
-  .eyebrow{font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;
-    color:var(--bronze);display:flex;gap:12px;align-items:center}
-  .eyebrow::after{content:"";height:1px;flex:0 0 64px;background:linear-gradient(90deg,var(--bronze),transparent)}
-  h1{font-family:var(--serif);font-optical-sizing:auto;font-weight:600;
-    font-size:clamp(2.6rem,7vw,5.1rem);line-height:.98;letter-spacing:-.02em;margin:.5em 0 .2em}
-  h1 em{font-style:italic;color:var(--bronze-bright);font-weight:500}
-  .lede{font-size:clamp(1.05rem,2.2vw,1.32rem);color:#cbc6ba;max-width:46ch;margin:0 0 14px}
-  .etymtag{font-family:var(--mono);font-size:13px;color:var(--faint);max-width:58ch;
-    border-left:2px solid var(--line);padding-left:14px;margin:22px 0 30px}
-  .etymtag b{color:var(--muted);font-weight:500}
-  .cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-  .btn{font-family:var(--mono);font-size:14px;font-weight:500;padding:12px 18px;border-radius:9px;
-    border:1px solid var(--line);transition:.2s;cursor:pointer;display:inline-flex;gap:9px;align-items:center}
-  .btn.primary{background:var(--bronze);color:#1a1205;border-color:var(--bronze)}
-  .btn.primary:hover{background:var(--bronze-bright);transform:translateY(-1px)}
-  .btn.ghost:hover{border-color:var(--bronze);color:var(--bronze-bright);background:rgba(216,166,87,.05)}
-  .btn .arr{transition:transform .2s}.btn:hover .arr{transform:translateX(3px)}
-
-  /* hero terminal */
-  .term{margin-top:40px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
-    background:linear-gradient(180deg,var(--panel),var(--ink-2));box-shadow:0 30px 80px -40px rgba(0,0,0,.8)}
-  .term .bar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line-soft);
-    font-family:var(--mono);font-size:12px;color:var(--faint)}
-  .term .bar .dot{width:11px;height:11px;border-radius:50%;background:#2a302f}
-  .term .bar .dot.a{background:#3a2f1a}.term .bar .name{margin-left:8px}
-  .term pre{margin:0;padding:18px 18px 20px;font-family:var(--mono);font-size:13.5px;line-height:1.85;
-    overflow-x:auto;color:#d6d1c5}
-  .term .pmpt{color:var(--bronze)}
-  .term .flag{color:var(--bronze-bright)}
-  .term .cmt{color:var(--faint)}
-  .term .ok{color:var(--allow)}
-  .term .path{color:#cbc6ba;text-decoration:underline;text-decoration-color:var(--line)}
-
-  /* section scaffold */
-  section.blk{padding:60px 0;border-top:1px solid var(--line-soft)}
-  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--bronze)}
-  h2{font-family:var(--serif);font-weight:500;font-size:clamp(1.8rem,4vw,2.7rem);letter-spacing:-.01em;margin:.35em 0 .25em}
-  h2 em{font-style:italic;color:var(--bronze-bright)}
-  .sub{color:var(--muted);max-width:62ch}
-
-  /* caveat */
-  .trust{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:30px}
-  @media(max-width:720px){.trust{grid-template-columns:1fr}}
-  .card{border:1px solid var(--line);border-radius:13px;padding:22px 22px 20px;background:var(--panel);position:relative;overflow:hidden}
-  .card .tag{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
-    padding:4px 9px;border-radius:6px;display:inline-block;margin-bottom:12px}
-  .card.good{border-color:rgba(156,207,138,.3)}
-  .card.good .tag{background:rgba(156,207,138,.12);color:var(--allow)}
-  .card.warn .tag{background:rgba(224,135,111,.12);color:var(--deny)}
-  .card h3{font-family:var(--sans);font-weight:600;font-size:1.08rem;margin:.1em 0 .4em}
-  .card p{color:#bdb8ac;font-size:.95rem;margin:.3em 0}
-  .card .corner{position:absolute;right:-26px;top:-26px;width:90px;height:90px;
-    background:radial-gradient(circle at 30% 70%,rgba(216,166,87,.10),transparent 70%)}
-  .honest{margin-top:22px;font-family:var(--mono);font-size:13px;color:var(--faint);
-    background:var(--panel-2);border:1px dashed var(--line);border-radius:10px;padding:14px 16px}
-  .honest b{color:var(--bronze)}
-
-  /* downloads */
-  .dlhead{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;justify-content:space-between}
-  .verbadge{font-family:var(--mono);font-size:13px;color:var(--muted);border:1px solid var(--line);
-    border-radius:999px;padding:6px 14px}
-  .verbadge b{color:var(--bronze-bright)}
-  #dlgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:24px}
-  @media(max-width:720px){#dlgrid{grid-template-columns:1fr}}
-  .dl{display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid var(--line);
-    border-radius:12px;padding:16px 18px;background:var(--panel);transition:.18s}
-  .dl:hover{border-color:var(--bronze);background:var(--panel-2);transform:translateY(-2px)}
-  .dl .os{font-family:var(--mono);font-weight:500}
-  .dl .os small{display:block;color:var(--faint);font-size:12px;font-weight:400;letter-spacing:.04em}
-  .dl.rec{border-color:var(--bronze);box-shadow:inset 0 0 0 1px rgba(216,166,87,.25)}
-  .dl.rec .os::after{content:"your platform";font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;
-    text-transform:uppercase;color:var(--bronze);margin-left:10px;border:1px solid var(--line);padding:2px 7px;border-radius:5px}
-  .dl .get{font-family:var(--mono);font-size:13px;color:var(--bronze-bright);white-space:nowrap}
-  .dlnote{margin-top:18px;color:var(--faint);font-size:13.5px;font-family:var(--mono)}
-  .dlnote a{color:var(--bronze);text-decoration:underline;text-decoration-color:var(--line)}
-  .dlnote code{color:var(--bronze-bright)}
-  #dlfallback{display:none;border:1px dashed var(--line);border-radius:12px;padding:22px;background:var(--panel);margin-top:6px}
-  #dlfallback.show{display:block}
-
-  /* install + usage command blocks */
-  .cmd{position:relative;border:1px solid var(--line);border-radius:11px;background:var(--ink-2);margin:14px 0;overflow:hidden}
-  .cmd .lbl{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--bronze);
-    padding:11px 16px 0}
-  .cmd pre{margin:0;padding:12px 16px 16px;font-family:var(--mono);font-size:13px;line-height:1.8;overflow-x:auto;color:#d6d1c5}
-  .cmd .pmpt{color:var(--bronze);user-select:none}
-  .cmd .flag{color:var(--bronze-bright)}
-  .cmd .cmt{color:var(--faint)}
-  .cmd code{font-family:var(--mono);color:var(--bronze-bright)}
-  .copy{position:absolute;top:10px;right:10px;font-family:var(--mono);font-size:11.5px;color:var(--muted);
-    background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;transition:.15s}
-  .copy:hover{color:var(--bronze-bright);border-color:var(--bronze)}
-  .copy.done{color:var(--allow);border-color:rgba(156,207,138,.4)}
-  .imethods{display:grid;grid-template-columns:1fr;gap:6px;margin-top:24px}
-  .istep{font-family:var(--mono);font-size:12.5px;color:var(--faint);margin:18px 0 2px}
-  .istep b{color:var(--bronze)}
-
-  /* how it works tiles */
-  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
-  @media(max-width:760px){.tiles{grid-template-columns:1fr}}
-  .tile{border:1px solid var(--line-soft);border-radius:13px;padding:20px;background:var(--panel);position:relative}
-  .tile .n{font-family:var(--mono);font-size:12px;color:var(--bronze);border:1px solid var(--line);border-radius:6px;
-    width:30px;height:30px;display:grid;place-items:center;margin-bottom:14px}
-  .tile h4{font-family:var(--sans);font-weight:600;font-size:1.02rem;margin:0 0 .35em}
-  .tile p{color:#b4afa3;font-size:.92rem;margin:0}
-  .tile code{font-family:var(--mono);font-size:.85em;color:var(--bronze-bright)}
-
-  /* footer */
-  footer{border-top:1px solid var(--line-soft);padding:46px 0 60px;margin-top:30px}
-  footer .grid{display:flex;flex-wrap:wrap;gap:30px;justify-content:space-between;align-items:flex-start}
-  footer .cols{display:flex;gap:54px;flex-wrap:wrap;font-family:var(--mono);font-size:13.5px}
-  footer .cols h5{color:var(--faint);font-weight:500;text-transform:uppercase;letter-spacing:.1em;font-size:11px;margin:0 0 12px}
-  footer .cols a{display:block;color:var(--muted);margin:7px 0;transition:color .15s}
-  footer .cols a:hover{color:var(--bronze-bright)}
-  footer .fine{color:var(--faint);font-size:12.5px;max-width:42ch;line-height:1.7}
-  footer .fine b{color:var(--muted)}
-
-  /* entrance */
-  .rise{opacity:0;transform:translateY(14px);animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards}
-  @keyframes rise{to{opacity:1;transform:none}}
-  @media(prefers-reduced-motion:reduce){.rise{animation:none;opacity:1;transform:none}}
-</style>
+<link rel="stylesheet" href="assets/tessera.css" />
+<link rel="alternate" hreflang="en" href="https://wagneripjr.github.io/kubectl-tessera/" />
+<link rel="alternate" hreflang="pt-BR" href="https://wagneripjr.github.io/kubectl-tessera/pt-br/" />
+<link rel="alternate" hreflang="x-default" href="https://wagneripjr.github.io/kubectl-tessera/" />
 </head>
 <body>
 
@@ -199,6 +25,8 @@
       <a href="#download" class="hide-sm">Download</a>
       <a href="#install" class="hide-sm">Install</a>
       <a href="#usage" class="hide-sm">Usage</a>
+      <a href="#flags" class="hide-sm">Flags</a>
+      <span class="lang"><span class="active">EN</span> &#183; <a href="pt-br/">PT</a></span>
       <a class="ghub" href="https://github.com/wagneripjr/kubectl-tessera" target="_blank" rel="noopener">GitHub &#8599;</a>
     </nav>
   </div>
@@ -220,7 +48,7 @@
     </p>
     <div class="cta rise" style="animation-delay:.24s">
       <a class="btn primary" href="#download">Download latest <span class="arr">&#8594;</span></a>
-      <a class="btn ghost" href="#install">Install with krew</a>
+      <a class="btn ghost" href="#install">Install</a>
       <a class="btn ghost" href="https://github.com/wagneripjr/kubectl-tessera" target="_blank" rel="noopener">Source &#8599;</a>
     </div>
 
@@ -359,8 +187,18 @@
     <span class="flag">--resource</span> pods <span class="flag">--namespace</span> prod \
     <span class="flag">--resource-name</span> stuck-pod-abc123 <span class="flag">--ttl</span> 20m <span class="flag">--print-kubeconfig</span>)"</pre></div>
 
+    <div class="cmd"><div class="lbl">preview before you mint &#8212; nothing gets created</div>
+      <button class="copy" data-copy="kubectl tessera --resource pods --namespace prod --dry-run">copy</button>
+<pre><span class="pmpt">$</span> kubectl tessera <span class="flag">--resource</span> pods <span class="flag">--namespace</span> prod <span class="flag">--dry-run</span>   <span class="cmt"># shows the Role/RoleBinding it would create</span></pre></div>
+
+    <div class="cmd"><div class="lbl">see what&#8217;s live &#8212; humans or agents</div>
+      <button class="copy" data-copy="kubectl tessera ls&#10;kubectl tessera ls -o json">copy</button>
+<pre><span class="pmpt">$</span> kubectl tessera ls   <span class="cmt"># session-id, owner, scope, expires-at &#8212; every active session</span>
+<span class="pmpt">$</span> kubectl tessera ls <span class="flag">-o json</span>   <span class="cmt"># scriptable form</span></pre></div>
+
     <p class="dlnote">Using <code>--print-kubeconfig</code>? It leaves the RBAC
-      objects for the sweeper &#8212; make sure <code>kubectl tessera gc</code>
+      objects for the sweeper &#8212; check what&#8217;s still live with <code>kubectl tessera ls</code>,
+      then make sure <code>kubectl tessera gc</code>
       (or the in&#8209;cluster CronJob) runs.</p>
   </div></section>
 
@@ -377,7 +215,35 @@
           That&#8217;s what makes the non&#8209;admin boundary real.</p></div>
       <div class="tile"><div class="n">03</div><h4>Three&#8209;layer cleanup</h4>
         <p>The token self&#8209;expires, the interactive shell traps its exit, and <code>tessera gc</code> sweeps any
-          orphans by label. Nothing lingers.</p></div>
+          orphans by label. <code>tessera ls</code> shows you what&#8217;s still live. Nothing lingers.</p></div>
+    </div>
+  </div></section>
+
+  <!-- FLAGS -->
+  <section class="blk" id="flags"><div class="wrap">
+    <div class="kicker">Reference</div>
+    <h2>Every <em>flag</em>, at a glance</h2>
+    <p class="sub">Standard kubectl flags (<code style="font-family:var(--mono);color:var(--bronze-bright)">--context</code>,
+      <code style="font-family:var(--mono);color:var(--bronze-bright)">--kubeconfig</code>, &#8230;) are inherited from
+      cli&#8209;runtime and select <i>which</i> cluster/identity to mint against.</p>
+    <div class="flagtable-wrap">
+      <table class="flagtable">
+        <thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>--verb</code></td><td><code>get,list,watch</code></td><td>Comma&#8209;separated verbs to grant.</td></tr>
+          <tr><td><code>--resource</code></td><td><i>required</i></td><td>Comma&#8209;separated resources to scope to (e.g. <code>pods,deployments</code>), or <code>'*'</code> for all resources &#8212; the SSAR pre&#8209;flight makes this admin&#8209;only, so it can&#8217;t escalate you.</td></tr>
+          <tr><td><code>-n</code>, <code>--namespace</code></td><td><i>current context</i></td><td>Namespace to scope to &#8212; a namespaced <code>Role</code> + <code>RoleBinding</code>.</td></tr>
+          <tr><td><code>--cluster-scoped</code></td><td><code>false</code></td><td>Scope over cluster&#8209;scoped resources (e.g. <code>nodes</code>, <code>clusterroles</code>) &#8212; mints a <code>ClusterRole</code> + <code>ClusterRoleBinding</code>.</td></tr>
+          <tr><td><code>-A</code>, <code>--all-namespaces</code></td><td><code>false</code></td><td>Grant the scope in every namespace, including future ones.</td></tr>
+          <tr><td><code>--ttl</code></td><td><code>15m</code></td><td>Token lifetime. Values below the cluster minimum are floored and very long TTLs may be clamped &#8212; tessera warns on stderr when it adjusts.</td></tr>
+          <tr><td><code>--resource-name</code></td><td><i>none</i></td><td>Restrict the grant to named resource instances.</td></tr>
+          <tr><td><code>--api-group</code></td><td><i>inferred</i></td><td>API group of the target resource(s); needed only to disambiguate.</td></tr>
+          <tr><td><code>--exec</code></td><td><i>default</i></td><td>Drop into an interactive subshell with the scoped kubeconfig; clean up RBAC on exit.</td></tr>
+          <tr><td><code>--print-kubeconfig</code></td><td></td><td>Print the kubeconfig path to stdout. Leaves RBAC objects for <code>gc</code>.</td></tr>
+          <tr><td><code>--dry-run</code></td><td></td><td>Show what would be created without creating it.</td></tr>
+          <tr><td><code>-o json</code></td><td></td><td>Machine&#8209;readable output.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div></section>
 </main>
@@ -405,80 +271,6 @@
   </div>
 </div></div></footer>
 
-<script>
-(function(){
-  var REPO = "wagneripjr/kubectl-tessera";
-  var OSLABEL = {linux:"Linux", darwin:"macOS", windows:"Windows"};
-  var ARCHLABEL = {amd64:"x86‑64 (amd64)", arm64:"ARM64 (arm64)"};
-  var ORDER = ["linux/amd64","linux/arm64","darwin/arm64","darwin/amd64","windows/amd64","windows/arm64"];
-
-  // copy buttons
-  document.addEventListener("click", function(e){
-    var b = e.target.closest(".copy"); if(!b) return;
-    var txt = b.getAttribute("data-copy") || "";
-    navigator.clipboard.writeText(txt).then(function(){
-      var old = b.textContent; b.textContent = "copied ✓"; b.classList.add("done");
-      setTimeout(function(){ b.textContent = old; b.classList.remove("done"); }, 1600);
-    });
-  });
-
-  // detect host platform to recommend a build
-  function hostKey(){
-    var p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "").toLowerCase();
-    var ua = navigator.userAgent.toLowerCase();
-    var os = p.indexOf("win")>-1 ? "windows" : (p.indexOf("mac")>-1 ? "darwin" : "linux");
-    var arch = (/arm|aarch64/.test(ua) || /arm/.test(p)) ? "arm64" : "amd64";
-    return os + "/" + arch;
-  }
-
-  function showFallback(){ document.getElementById("dlfallback").classList.add("show"); }
-
-  function render(assets, host){
-    var grid = document.getElementById("dlgrid");
-    var byKey = {};
-    assets.forEach(function(a){
-      var m = a.name.match(/_(linux|darwin|windows)_(amd64|arm64)\.(tar\.gz|zip)$/);
-      // Only trust https download URLs (defends against a javascript:/data: asset URL).
-      if(m && /^https:\/\//.test(a.browser_download_url||"")) byKey[m[1]+"/"+m[2]] = a.browser_download_url;
-    });
-    var keys = ORDER.filter(function(k){ return byKey[k]; });
-    if(!keys.length){ showFallback(); return; }
-    grid.textContent = "";
-    keys.forEach(function(k){
-      var os = k.split("/")[0], arch = k.split("/")[1];
-      var a = document.createElement("a");
-      a.className = "dl" + (k===host ? " rec" : "");
-      a.href = byKey[k]; a.rel = "noopener";
-      // Build with textContent only — no innerHTML, no untrusted interpolation.
-      var osSpan = document.createElement("span");
-      osSpan.className = "os";
-      osSpan.appendChild(document.createTextNode(OSLABEL[os] || os));
-      var small = document.createElement("small");
-      small.textContent = ARCHLABEL[arch] || arch;
-      osSpan.appendChild(small);
-      var get = document.createElement("span");
-      get.className = "get";
-      get.textContent = "download ↓";
-      a.appendChild(osSpan);
-      a.appendChild(get);
-      grid.appendChild(a);
-    });
-  }
-
-  fetch("https://api.github.com/repos/"+REPO+"/releases/latest", {headers:{Accept:"application/vnd.github+json"}})
-    .then(function(r){ if(!r.ok) throw new Error("no release ("+r.status+")"); return r.json(); })
-    .then(function(rel){
-      var tag = rel.tag_name || "latest";
-      document.getElementById("vertag").textContent = tag;
-      var assets = (rel.assets||[]).filter(function(a){ return /\.(tar\.gz|zip)$/.test(a.name); });
-      if(!assets.length){ document.getElementById("vertag").textContent = tag+" (no binaries)"; showFallback(); return; }
-      render(assets, hostKey());
-    })
-    .catch(function(){
-      document.getElementById("vertag").textContent = "none yet";
-      showFallback();
-    });
-})();
-</script>
+<script src="assets/tessera.js"></script>
 </body>
 </html>
