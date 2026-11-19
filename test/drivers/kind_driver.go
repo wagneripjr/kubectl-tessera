@@ -185,6 +185,9 @@ func (d *KindDriver) mintArgs(req MintRequest) []string {
 	if req.AsIdentity != "" {
 		args = append(args, "--kubeconfig", d.identities[req.AsIdentity])
 	}
+	if req.ContextName != "" {
+		args = append(args, "--context-name", req.ContextName)
+	}
 	return args
 }
 
@@ -576,6 +579,30 @@ func (d *KindDriver) KubeconfigFileExists(path string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func (d *KindDriver) KubeconfigNames(path string) (string, string, error) {
+	cfg, err := clientcmd.LoadFromFile(path)
+	if err != nil {
+		return "", "", fmt.Errorf("loading produced kubeconfig %q: %w", path, err)
+	}
+	current, ok := cfg.Contexts[cfg.CurrentContext]
+	if !ok {
+		return "", "", fmt.Errorf("produced kubeconfig %q has no current context %q", path, cfg.CurrentContext)
+	}
+	return cfg.CurrentContext, current.Cluster, nil
+}
+
+func (d *KindDriver) SourceClusterName() (string, error) {
+	raw, err := clientcmd.NewDefaultClientConfigLoadingRules().Load()
+	if err != nil {
+		return "", fmt.Errorf("loading operator kubeconfig: %w", err)
+	}
+	current, ok := raw.Contexts[raw.CurrentContext]
+	if !ok {
+		return "", fmt.Errorf("operator kubeconfig has no current context %q", raw.CurrentContext)
+	}
+	return current.Cluster, nil
 }
 
 func (d *KindDriver) EnsureNamespace(ctx context.Context, namespace string) error {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--context-name` sets the name of the minted kubeconfig's context, cluster and user (FR-021).
+
+### Changed
+
+- The minted kubeconfig's context, cluster and user are now named `tessera@<current cluster>`
+  instead of a fixed `tessera`, so an agent holding several minted kubeconfigs can tell which
+  cluster each one targets (FR-021).
+
 ## [0.1.2] - 2026-06-23
 
 First release whose pipeline completes green. v0.1.0 and v0.1.1 both reported failure —

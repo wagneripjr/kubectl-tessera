@@ -28,6 +28,8 @@ type mintOptions struct {
 	printKubeconfig bool
 	dryRun          bool
 	output          string
+	contextName     string
+	contextNameSet  bool
 }
 
 func Execute(info BuildInfo) {
@@ -70,6 +72,7 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 			if len(args) == 0 && cmd.Flags().NFlag() == 0 {
 				return cmd.Help()
 			}
+			o.contextNameSet = cmd.Flags().Changed("context-name")
 			return o.run(cmd)
 		},
 	}
@@ -90,6 +93,7 @@ func newRootCmd(info BuildInfo) *cobra.Command {
 	f.BoolVar(&o.printKubeconfig, "print-kubeconfig", false, "print the kubeconfig path to stdout; leave objects for gc")
 	f.BoolVar(&o.dryRun, "dry-run", false, "pre-flight and print intended objects; create nothing")
 	f.StringVarP(&o.output, "output", "o", "", "output format (e.g. json)")
+	f.StringVar(&o.contextName, "context-name", "", `name of the minted kubeconfig's context, cluster and user (default "tessera@<current cluster>")`)
 
 	cmd.AddCommand(newVersionCmd(info), newGcCmd(cf), newLsCmd(cf))
 	return cmd

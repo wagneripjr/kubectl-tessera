@@ -56,7 +56,8 @@ GODOG_TAGS="@FR-001" go test -tags=e2e ./test/e2e/... -v           # scenarios f
 
 `ConfigFlags` (k8s.io/cli-runtime) owns the global `--cluster` (kubeconfig cluster name).
 tessera's "cluster-scoped resources" flag is therefore **`--cluster-scoped`**, NOT `--cluster`.
-Do not reintroduce the collision (ADR-001).
+Do not reintroduce the collision (ADR-001). Likewise the minted kubeconfig's name flag is
+**`--context-name`**, not `--cluster-name` (FR-021).
 
 ## Architecture — the mint pipeline
 

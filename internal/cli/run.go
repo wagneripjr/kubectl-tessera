@@ -193,6 +193,7 @@ func (o *mintOptions) run(cmd *cobra.Command) error {
 		Token:      minted.Token,
 		Namespace:  kcNamespace,
 		SessionID:  sessionID,
+		Name:       o.kubeconfigName(),
 	})
 	path, err := kubeconfig.Write(kcfg, sessionID)
 	if err != nil {
@@ -278,7 +279,35 @@ func (o *mintOptions) validate() error {
 	if o.output == output.FormatJSON && o.exec {
 		return fmt.Errorf("--exec and -o json are mutually exclusive")
 	}
+	if o.contextNameSet && strings.TrimSpace(o.contextName) == "" {
+		return fmt.Errorf("--context-name must not be empty; omit it to use the default tessera@<current cluster>")
+	}
 	return nil
+}
+
+func (o *mintOptions) kubeconfigName() string {
+	if o.contextName != "" {
+		return o.contextName
+	}
+	return kubeconfig.Name(o.sourceClusterName())
+}
+
+func (o *mintOptions) sourceClusterName() string {
+	if o.configFlags.ClusterName != nil && *o.configFlags.ClusterName != "" {
+		return *o.configFlags.ClusterName
+	}
+	raw, err := o.configFlags.ToRawKubeConfigLoader().RawConfig()
+	if err != nil {
+		return ""
+	}
+	current := raw.CurrentContext
+	if o.configFlags.Context != nil && *o.configFlags.Context != "" {
+		current = *o.configFlags.Context
+	}
+	if c, ok := raw.Contexts[current]; ok {
+		return c.Cluster
+	}
+	return ""
 }
 
 func buildCreateAttributes(clusterWide bool, saNamespace string, bindNamespaces []string) []preflight.Attribute {

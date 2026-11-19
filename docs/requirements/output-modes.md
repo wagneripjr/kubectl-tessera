@@ -75,6 +75,21 @@ Cobra display-name annotation), not `kubectl-tessera`.
   non-zero with `--resource is required`; a stray positional argument yields a non-help error.
 - **Traces to:** ADR-001 (Cobra) · unit tests (`internal/cli/help_test.go`).
 
+## FR-021: Name the minted kubeconfig after its source cluster
+
+The minted kubeconfig's context, cluster and user share one name. By default it is
+`tessera@<source cluster>`, where the source cluster is the kubeconfig cluster entry tessera
+minted against: the `--cluster` override if given, else the cluster of the `--context`
+override or of the current context. When no source cluster can be determined (e.g. in-cluster
+config), the name falls back to `tessera`. `--context-name <name>` replaces the default; an
+explicitly empty value is rejected. The flag is `--context-name`, not `--cluster-name`, to stay
+clear of the `ConfigFlags`-owned `--cluster` (see ADR-001).
+
+- **Acceptance:** with no flag, the produced kubeconfig's current context and its cluster are
+  both named `tessera@<operator's current cluster>`; with `--context-name prod-readonly` both
+  are `prod-readonly` and the credential still grants the requested access.
+- **Traces to:** ADR-001 · `distribution_cli.feature` · unit tests.
+
 ## Bet
 
 _(For FR-020 — R-1 precommitted outcome.)_

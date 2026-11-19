@@ -161,6 +161,12 @@ func registerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the produced kubeconfig grants the requested read access$`,
 		func(c context.Context) error { return current.ThenKubeconfigGrantsReadAccess(c, "pods") })
 	ctx.Step(`^the session audit details are written only to the diagnostic output$`, func() error { return current.ThenAuditOnDiagnosticOutput() })
+	ctx.Step(`^an operator requests a read-only "([^"]*)" session named "([^"]*)" for non-interactive use$`,
+		func(resource, name string) error { current.GivenOperatorRequestsNamedSession(resource, name); return nil })
+	ctx.Step(`^the produced kubeconfig names its cluster as a tessera credential for the operator's current cluster$`,
+		func() error { return current.ThenKubeconfigNamedAfterSourceCluster() })
+	ctx.Step(`^the produced kubeconfig names its cluster "([^"]*)"$`,
+		func(name string) error { return current.ThenKubeconfigNamed(name) })
 
 	ctx.Step(`^no tessera sessions are active$`,
 		func(c context.Context) error { return current.GivenNoActiveSessions(c) })

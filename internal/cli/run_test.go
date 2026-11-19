@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/wagneripjr/kubectl-tessera/internal/preflight"
 	"github.com/wagneripjr/kubectl-tessera/internal/scope"
@@ -23,6 +26,8 @@ func TestValidate(t *testing.T) {
 		{name: "all-resources wildcard alone is accepted", opts: mintOptions{resources: []string{"*"}, printKubeconfig: true}, wantErr: false},
 		{name: "all-resources wildcard with a resource-name is rejected", opts: mintOptions{resources: []string{"*"}, resourceNames: []string{"foo"}, printKubeconfig: true}, wantErr: true},
 		{name: "all-resources wildcard with an api-group is rejected", opts: mintOptions{resources: []string{"*"}, apiGroup: "apps", printKubeconfig: true}, wantErr: true},
+		{name: "explicitly empty context-name is rejected", opts: mintOptions{resources: []string{"pods"}, contextNameSet: true, contextName: "  "}, wantErr: true},
+		{name: "operator-chosen context-name is accepted", opts: mintOptions{resources: []string{"pods"}, contextNameSet: true, contextName: "prod-readonly"}, wantErr: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -259,6 +264,49 @@ func TestResolveNamespaceScope(t *testing.T) {
 				t.Fatalf("namespaces = %v, want %v", got.namespaces, tc.wantNamespaces)
 			}
 		})
+	}
+}
+
+func TestSourceClusterName(t *testing.T) {
+	src := clientcmdapi.NewConfig()
+	src.Clusters["kind-kind"] = &clientcmdapi.Cluster{Server: "https://kind:6443"}
+	src.Clusters["eks-prod"] = &clientcmdapi.Cluster{Server: "https://eks:443"}
+	src.AuthInfos["me"] = &clientcmdapi.AuthInfo{Token: "t"}
+	src.Contexts["dev"] = &clientcmdapi.Context{Cluster: "kind-kind", AuthInfo: "me"}
+	src.Contexts["prod"] = &clientcmdapi.Context{Cluster: "eks-prod", AuthInfo: "me"}
+	src.CurrentContext = "dev"
+	path := filepath.Join(t.TempDir(), "config")
+	if err := clientcmd.WriteToFile(*src, path); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name    string
+		context string
+		cluster string
+		want    string
+	}{
+		{name: "current context's cluster", want: "kind-kind"},
+		{name: "--context selects another context's cluster", context: "prod", want: "eks-prod"},
+		{name: "--cluster overrides the context's cluster", cluster: "eks-prod", want: "eks-prod"},
+		{name: "unknown context yields no name", context: "missing", want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kc, ctxName, cluster := path, tc.context, tc.cluster
+			o := mintOptions{configFlags: &genericclioptions.ConfigFlags{KubeConfig: &kc, Context: &ctxName, ClusterName: &cluster}}
+			if got := o.sourceClusterName(); got != tc.want {
+				t.Fatalf("sourceClusterName() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestKubeconfigNamePrefersOperatorChoice(t *testing.T) {
+	kc := filepath.Join(t.TempDir(), "absent")
+	o := mintOptions{contextName: "prod-readonly", configFlags: &genericclioptions.ConfigFlags{KubeConfig: &kc}}
+	if got := o.kubeconfigName(); got != "prod-readonly" {
+		t.Fatalf("kubeconfigName() = %q, want prod-readonly", got)
 	}
 }
 

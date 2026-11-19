@@ -10,29 +10,41 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-const contextName = "tessera"
+const defaultName = "tessera"
 
 type Params struct {
 	RESTConfig *rest.Config
 	Token      string
 	Namespace  string
 	SessionID  string
+	Name       string
+}
+
+func Name(sourceCluster string) string {
+	if sourceCluster == "" {
+		return defaultName
+	}
+	return defaultName + "@" + sourceCluster
 }
 
 func Build(p Params) *clientcmdapi.Config {
+	name := p.Name
+	if name == "" {
+		name = defaultName
+	}
 	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters[contextName] = &clientcmdapi.Cluster{
+	cfg.Clusters[name] = &clientcmdapi.Cluster{
 		Server:                   p.RESTConfig.Host,
 		CertificateAuthorityData: caData(p.RESTConfig),
 		InsecureSkipTLSVerify:    p.RESTConfig.Insecure,
 	}
-	cfg.AuthInfos[contextName] = &clientcmdapi.AuthInfo{Token: p.Token}
-	cfg.Contexts[contextName] = &clientcmdapi.Context{
-		Cluster:   contextName,
-		AuthInfo:  contextName,
+	cfg.AuthInfos[name] = &clientcmdapi.AuthInfo{Token: p.Token}
+	cfg.Contexts[name] = &clientcmdapi.Context{
+		Cluster:   name,
+		AuthInfo:  name,
 		Namespace: p.Namespace,
 	}
-	cfg.CurrentContext = contextName
+	cfg.CurrentContext = name
 	return cfg
 }
 

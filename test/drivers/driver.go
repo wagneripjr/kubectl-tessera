@@ -32,6 +32,8 @@ type MintRequest struct {
 	Output string
 
 	AsIdentity string
+
+	ContextName string
 }
 
 type MintResult struct {
@@ -62,6 +64,8 @@ type TesseraDriver interface {
 	SeedUnmanagedRBAC(ctx context.Context, name string) error
 	SeedManagedSession(ctx context.Context, sessionID string, expiresAt time.Time) error
 	KubeconfigFileExists(path string) (bool, error)
+	KubeconfigNames(path string) (contextName, clusterName string, err error)
+	SourceClusterName() (string, error)
 
 	EnsureNamespace(ctx context.Context, namespace string) error
 	DeleteNamespace(ctx context.Context, namespace string) error

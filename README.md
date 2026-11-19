@@ -123,6 +123,7 @@ kubectl tessera --resource pods --namespace prod --dry-run
 | `--print-kubeconfig` | | Print the kubeconfig **path** to stdout (for agents/automation). Leaves RBAC objects for `gc`. |
 | `--dry-run` | | Show what would be created without creating it. |
 | `-o json` | | Machine-readable output. |
+| `--context-name` | `tessera@<current cluster>` | Name of the minted kubeconfig's context, cluster and user. |
 
 Standard kubectl flags (`--context`, `--cluster`, `--kubeconfig`, `--as`, …) are inherited from
 cli-runtime and select *which* cluster/identity to mint against — note `--cluster` is kubectl's

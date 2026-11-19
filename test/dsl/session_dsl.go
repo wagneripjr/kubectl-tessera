@@ -49,6 +49,11 @@ func (s *SessionDSL) GivenOperatorRequests(verbs, resource string) {
 	}
 }
 
+func (s *SessionDSL) GivenOperatorRequestsNamedSession(resource, name string) {
+	s.GivenOperatorRequests("get,list,watch", resource)
+	s.req.ContextName = name
+}
+
 func (s *SessionDSL) GivenOperatorRequestsClusterScoped(verbs, resource string) {
 	s.req = drivers.MintRequest{
 		Verbs:         splitCSV(verbs),
@@ -461,6 +466,28 @@ func (s *SessionDSL) ThenOnlyPathOnStdout() error {
 
 func (s *SessionDSL) ThenKubeconfigGrantsReadAccess(ctx context.Context, resource string) error {
 	return s.ThenMintedCredentialCan(ctx, "is allowed", "get", resource, "")
+}
+
+func (s *SessionDSL) ThenKubeconfigNamedAfterSourceCluster() error {
+	source, err := s.driver.SourceClusterName()
+	if err != nil {
+		return fmt.Errorf("reading the operator's current cluster: %w", err)
+	}
+	return s.ThenKubeconfigNamed("tessera@" + source)
+}
+
+func (s *SessionDSL) ThenKubeconfigNamed(want string) error {
+	if s.last.ExitCode != 0 {
+		return fmt.Errorf("mint failed (exit %d): %s", s.last.ExitCode, strings.TrimSpace(s.last.Stderr))
+	}
+	contextName, clusterName, err := s.driver.KubeconfigNames(s.last.KubeconfigPath)
+	if err != nil {
+		return err
+	}
+	if contextName != want || clusterName != want {
+		return fmt.Errorf("expected context and cluster named %q, got context %q cluster %q", want, contextName, clusterName)
+	}
+	return nil
 }
 
 func (s *SessionDSL) ThenAuditOnDiagnosticOutput() error {
